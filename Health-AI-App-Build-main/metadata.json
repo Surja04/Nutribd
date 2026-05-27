@@ -1,0 +1,6 @@
+{
+  "name": "NutriBD AI",
+  "description": "An AI-Powered Personalized Nutrition & Health Risk Assistant for Bangladesh.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
