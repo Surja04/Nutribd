@@ -87,15 +87,15 @@ export default function App() {
   // Server health test indicator
   const [apiActive, setApiActive] = useState<boolean>(false);
 
-  // Fast calculation indices:
   const isProfileValid =
     profile.age >= 12 &&
     profile.age <= 110 &&
     profile.weight >= 30 &&
-    profile.weight <= 200 &&
+    profile.weight <= 250 &&
     profile.height >= 100 &&
     profile.height <= 250;
 
+  // Fast calculation indices:
   const weightKg = Math.max(0, profile.weight);
   const heightM = profile.height > 0 ? profile.height / 100 : 1;
   const bmi = profile.height > 0 ? Number((weightKg / (heightM * heightM)).toFixed(1)) : 0;
@@ -325,7 +325,7 @@ export default function App() {
       const response = await fetch('/api/healthy-alternatives', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ customQuery: query })
+        body: JSON.stringify({ customQuery: query, profile })
       });
 
       if (!response.ok) {
