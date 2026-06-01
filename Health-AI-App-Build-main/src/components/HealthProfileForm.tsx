@@ -39,7 +39,7 @@ export default function HealthProfileForm({ profile, onChange, isLoading, onGene
     profile.age >= 12 &&
     profile.age <= 110 &&
     profile.weight >= 30 &&
-    profile.weight <= 200 &&
+    profile.weight <= 250 &&
     profile.height >= 100 &&
     profile.height <= 250;
 
@@ -82,7 +82,7 @@ export default function HealthProfileForm({ profile, onChange, isLoading, onGene
             min="12"
             max="110"
             value={profile.age === 0 ? "" : profile.age}
-            onChange={(e) => setNumberField('age', e.target.value, 110)}
+            onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNumberField('age', e.target.value, 110)}
             className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
           />
         </div>
@@ -115,7 +115,7 @@ export default function HealthProfileForm({ profile, onChange, isLoading, onGene
             min="30"
             max="250"
             value={profile.weight === 0 ? "" : profile.weight}
-            onChange={(e) => setNumberField('weight', e.target.value, 250)}
+            onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNumberField('weight', e.target.value, 250)}
             className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
           />
         </div>
@@ -127,7 +127,7 @@ export default function HealthProfileForm({ profile, onChange, isLoading, onGene
             min="100"
             max="250"
             value={profile.height === 0 ? "" : profile.height}
-            onChange={(e) => setNumberField('height', e.target.value, 250)}
+            onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNumberField('height', e.target.value, 250)}
             className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
           />
         </div>
@@ -197,6 +197,12 @@ export default function HealthProfileForm({ profile, onChange, isLoading, onGene
       </div>
 
       {/* Budget & Dietary Preferences */}
+      {!isFormValid && (
+        <div className="text-xs bg-amber-50 border border-amber-100 text-amber-900 rounded-xl p-3">
+          Enter Age (12–110), Weight (30–250 kg), and Height (100–250 cm). Your AI dashboard will stay visible while the fields are corrected.
+        </div>
+      )}
+
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2">
         <div>
           <label className="block text-xs font-semibold text-slate-600 uppercase tracking-wider mb-2 flex items-center gap-1.5">
@@ -231,12 +237,6 @@ export default function HealthProfileForm({ profile, onChange, isLoading, onGene
           </select>
         </div>
       </div>
-
-      {!isFormValid && (
-        <div className="text-xs bg-amber-50 border border-amber-100 text-amber-900 rounded-xl p-3">
-          Please enter valid Age (12-110), Height (100-250 cm), and Weight (30-250 kg) so the AI recommendations can run safely.
-        </div>
-      )}
 
       <button
         type="button"
