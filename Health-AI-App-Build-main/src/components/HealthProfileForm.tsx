@@ -26,6 +26,8 @@ export default function HealthProfileForm({ profile, onChange, isLoading, onGene
     });
   };
 
+  const isProfileComplete = profile.age !== 0 && profile.weight !== 0 && profile.height !== 0;
+
   const toggleCondition = (conditionId: string) => {
     let current = [...profile.healthConditions];
     if (conditionId === 'none') {
@@ -264,7 +266,7 @@ export default function HealthProfileForm({ profile, onChange, isLoading, onGene
       <button
         type="button"
         onClick={onGenerateRecommendations}
-        disabled={isLoading}
+        disabled={isLoading || !isProfileComplete}
         className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-medium py-3 px-4 rounded-xl text-sm transition-all shadow-sm hover:shadow active:scale-[0.98] disabled:opacity-50 flex items-center justify-center gap-2 mt-4 cursor-pointer"
       >
         <span className="font-semibold">Generate AI Nutrition Plan</span>
