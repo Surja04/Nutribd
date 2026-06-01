@@ -57,9 +57,9 @@ export default function HealthProfileForm({ profile, onChange, isLoading, onGene
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {(profile.age === 0 && profile.weight === 0 && profile.height === 0) && (
+        {(profile.age === 0 || profile.weight === 0 || profile.height === 0) && (
           <div className="col-span-full text-[10px] text-red-600 mb-2 px-2 py-1 bg-red-50 border border-red-100 rounded-md">
-            Please provide age, weight, or height to continue.
+            All three fields are required: age, weight, and height.
           </div>
         )}
         {/* Age and Gender */}
