@@ -26,7 +26,22 @@ export default function HealthProfileForm({ profile, onChange, isLoading, onGene
     });
   };
 
-  const isProfileComplete = profile.age !== 0 && profile.weight !== 0 && profile.height !== 0;
+  const setNumberField = (field: keyof HealthProfile, rawValue: string, max: number) => {
+    const parsed = rawValue === "" ? 0 : Number(rawValue);
+    const nextValue = Number.isNaN(parsed) ? 0 : Math.min(max, parsed);
+    onChange({
+      ...profile,
+      [field]: nextValue,
+    });
+  };
+
+  const isFormValid =
+    profile.age >= 12 &&
+    profile.age <= 110 &&
+    profile.weight >= 30 &&
+    profile.weight <= 200 &&
+    profile.height >= 100 &&
+    profile.height <= 250;
 
   const toggleCondition = (conditionId: string) => {
     let current = [...profile.healthConditions];
@@ -59,34 +74,15 @@ export default function HealthProfileForm({ profile, onChange, isLoading, onGene
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {(profile.age === 0 || profile.weight === 0 || profile.height === 0) && (
-          <div className="col-span-full text-[10px] text-red-600 mb-2 px-2 py-1 bg-red-50 border border-red-100 rounded-md">
-            All three fields are required: age, weight, and height.
-          </div>
-        )}
         {/* Age and Gender */}
         <div>
           <label className="block text-xs font-semibold text-slate-600 uppercase tracking-wider mb-2">Age (years)</label>
-          {(profile.age !== 0 && (profile.age < 12 || profile.age > 120)) && (
-            <p className="text-[10px] text-red-600 mb-1">Age must be between 12 and 120 years.</p>
-          )}
           <input
             type="number"
-            name="age"
             min="12"
-            max="120"
+            max="110"
             value={profile.age === 0 ? "" : profile.age}
-            onChange={(e) => {
-              const val = e.target.value;
-              const parsed = parseInt(val, 10);
-              setField('age', val === "" || Number.isNaN(parsed) ? 0 : parsed);
-            }}
-            onBlur={() => {
-              if (profile.age !== 0) {
-                if (profile.age < 12) setField('age', 12);
-                else if (profile.age > 120) setField('age', 120);
-              }
-            }}
+            onChange={(e) => setNumberField('age', e.target.value, 110)}
             className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
           />
         </div>
@@ -114,51 +110,24 @@ export default function HealthProfileForm({ profile, onChange, isLoading, onGene
         {/* Weight and Height */}
         <div>
           <label className="block text-xs font-semibold text-slate-600 uppercase tracking-wider mb-2">Weight (kg)</label>
-          {(profile.weight !== 0 && (profile.weight < 30 || profile.weight > 500)) && (
-            <p className="text-[10px] text-red-600 mb-1">Weight must be between 30 and 500 kg.</p>
-          )}
           <input
             type="number"
-            name="weight"
             min="30"
-            max="500"
+            max="250"
             value={profile.weight === 0 ? "" : profile.weight}
-            onChange={(e) => {
-              const val = e.target.value;
-              const parsed = parseFloat(val);
-              setField('weight', val === "" || Number.isNaN(parsed) ? 0 : parsed);
-            }}
-            onBlur={() => {
-              if (profile.weight !== 0) {
-                if (profile.weight < 30) setField('weight', 30);
-                else if (profile.weight > 500) setField('weight', 500);
-              }
-            }}
+            onChange={(e) => setNumberField('weight', e.target.value, 250)}
             className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
           />
         </div>
 
         <div>
           <label className="block text-xs font-semibold text-slate-600 uppercase tracking-wider mb-2">Height (cm)</label>
-          {(profile.height !== 0 && (profile.height < 100 || profile.height > 270)) && (
-            <p className="text-[10px] text-red-600 mb-1">Height must be between 100 and 270 cm.</p>
-          )}
           <input
             type="number"
             min="100"
-            max="270"
+            max="250"
             value={profile.height === 0 ? "" : profile.height}
-            onChange={(e) => {
-              const val = e.target.value;
-              const parsed = parseFloat(val);
-              setField('height', val === "" || Number.isNaN(parsed) ? 0 : parsed);
-            }}
-            onBlur={() => {
-              if (profile.height !== 0) {
-                if (profile.height < 100) setField('height', 100);
-                else if (profile.height > 270) setField('height', 270);
-              }
-            }}
+            onChange={(e) => setNumberField('height', e.target.value, 250)}
             className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
           />
         </div>
@@ -263,10 +232,16 @@ export default function HealthProfileForm({ profile, onChange, isLoading, onGene
         </div>
       </div>
 
+      {!isFormValid && (
+        <div className="text-xs bg-amber-50 border border-amber-100 text-amber-900 rounded-xl p-3">
+          Please enter valid Age (12-110), Height (100-250 cm), and Weight (30-250 kg) so the AI recommendations can run safely.
+        </div>
+      )}
+
       <button
         type="button"
         onClick={onGenerateRecommendations}
-        disabled={isLoading || !isProfileComplete}
+        disabled={isLoading || !isFormValid}
         className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-medium py-3 px-4 rounded-xl text-sm transition-all shadow-sm hover:shadow active:scale-[0.98] disabled:opacity-50 flex items-center justify-center gap-2 mt-4 cursor-pointer"
       >
         <span className="font-semibold">Generate AI Nutrition Plan</span>
