@@ -26,23 +26,6 @@ export default function HealthProfileForm({ profile, onChange, isLoading, onGene
     });
   };
 
-  const setNumberField = (field: keyof HealthProfile, rawValue: string, max: number) => {
-    const parsed = rawValue === "" ? 0 : Number(rawValue);
-    const nextValue = Number.isNaN(parsed) ? 0 : Math.min(max, parsed);
-    onChange({
-      ...profile,
-      [field]: nextValue,
-    });
-  };
-
-  const isFormValid =
-    profile.age >= 12 &&
-    profile.age <= 110 &&
-    profile.weight >= 30 &&
-    profile.weight <= 250 &&
-    profile.height >= 100 &&
-    profile.height <= 250;
-
   const toggleCondition = (conditionId: string) => {
     let current = [...profile.healthConditions];
     if (conditionId === 'none') {
@@ -81,8 +64,8 @@ export default function HealthProfileForm({ profile, onChange, isLoading, onGene
             type="number"
             min="12"
             max="110"
-            value={profile.age === 0 ? "" : profile.age}
-            onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNumberField('age', e.target.value, 110)}
+            value={profile.age}
+            onChange={(e) => setField('age', Math.max(12, parseInt(e.target.value) || 25))}
             className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
           />
         </div>
@@ -113,9 +96,9 @@ export default function HealthProfileForm({ profile, onChange, isLoading, onGene
           <input
             type="number"
             min="30"
-            max="250"
-            value={profile.weight === 0 ? "" : profile.weight}
-            onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNumberField('weight', e.target.value, 250)}
+            max="200"
+            value={profile.weight}
+            onChange={(e) => setField('weight', Math.max(30, parseFloat(e.target.value) || 65))}
             className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
           />
         </div>
@@ -126,8 +109,8 @@ export default function HealthProfileForm({ profile, onChange, isLoading, onGene
             type="number"
             min="100"
             max="250"
-            value={profile.height === 0 ? "" : profile.height}
-            onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNumberField('height', e.target.value, 250)}
+            value={profile.height}
+            onChange={(e) => setField('height', Math.max(100, parseFloat(e.target.value) || 165))}
             className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
           />
         </div>
@@ -197,12 +180,6 @@ export default function HealthProfileForm({ profile, onChange, isLoading, onGene
       </div>
 
       {/* Budget & Dietary Preferences */}
-      {!isFormValid && (
-        <div className="text-xs bg-amber-50 border border-amber-100 text-amber-900 rounded-xl p-3">
-          Enter Age (12–110), Weight (30–250 kg), and Height (100–250 cm). Your AI dashboard will stay visible while the fields are corrected.
-        </div>
-      )}
-
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2">
         <div>
           <label className="block text-xs font-semibold text-slate-600 uppercase tracking-wider mb-2 flex items-center gap-1.5">
@@ -241,7 +218,7 @@ export default function HealthProfileForm({ profile, onChange, isLoading, onGene
       <button
         type="button"
         onClick={onGenerateRecommendations}
-        disabled={isLoading || !isFormValid}
+        disabled={isLoading}
         className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-medium py-3 px-4 rounded-xl text-sm transition-all shadow-sm hover:shadow active:scale-[0.98] disabled:opacity-50 flex items-center justify-center gap-2 mt-4 cursor-pointer"
       >
         <span className="font-semibold">Generate AI Nutrition Plan</span>
