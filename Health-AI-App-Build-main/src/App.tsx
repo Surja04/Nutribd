@@ -87,18 +87,10 @@ export default function App() {
   // Server health test indicator
   const [apiActive, setApiActive] = useState<boolean>(false);
 
-  const isProfileValid =
-    profile.age >= 12 &&
-    profile.age <= 110 &&
-    profile.weight >= 30 &&
-    profile.weight <= 250 &&
-    profile.height >= 100 &&
-    profile.height <= 250;
-
   // Fast calculation indices:
-  const weightKg = Math.max(0, profile.weight);
-  const heightM = profile.height > 0 ? profile.height / 100 : 1;
-  const bmi = profile.height > 0 ? Number((weightKg / (heightM * heightM)).toFixed(1)) : 0;
+  const weightKg = profile.weight;
+  const heightM = profile.height / 100;
+  const bmi = Number((weightKg / (heightM * heightM)).toFixed(1));
 
   // Determine BMI category using South Asian Specific thresholds 
   // Overweight standards in South Asian populations begin lower (at 23.0) due to higher risk of cardiovascular diseases and abdominal visceral adiposity.
@@ -251,11 +243,6 @@ export default function App() {
 
   // Trigger AI preventive risks
   const triggerPreventiveRiskAssessment = async () => {
-    if (!isProfileValid) {
-      setRiskError("Complete a valid Age, Weight, and Height before running risk assessment.");
-      return;
-    }
-
     setIsGeneratingRisks(true);
     setRiskError(null);
 
@@ -286,11 +273,6 @@ export default function App() {
 
   // Trigger Personalized Meal Recommendations & budget checklist
   const triggerMealRecommendations = async () => {
-    if (!isProfileValid) {
-      setMealError("Complete a valid Age, Weight, and Height before generating meal recommendations.");
-      return;
-    }
-
     setIsGeneratingMealPlan(true);
     setMealError(null);
 
@@ -325,7 +307,7 @@ export default function App() {
       const response = await fetch('/api/healthy-alternatives', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ customQuery: query, profile })
+        body: JSON.stringify({ customQuery: query })
       });
 
       if (!response.ok) {
