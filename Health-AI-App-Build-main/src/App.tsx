@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { HealthProfile, FoodItem, FoodAnalysisResult, HealthRiskAssessment, MealPlanResponse, FoodAlternative } from './types';
 import HealthProfileForm from './components/HealthProfileForm';
-import DocsPage from './components/DocsPage';
 import { 
   HeartPulse, 
   Activity, 
@@ -83,21 +82,18 @@ export default function App() {
   const [alternativeError, setAlternativeError] = useState<string | null>(null);
 
   // General App Dashboard navigation tabs
-  const [activeTab, setActiveTab] = useState<'tracker' | 'risks' | 'meals' | 'alternatives' | 'docs'>('tracker');
+  const [activeTab, setActiveTab] = useState<'tracker' | 'risks' | 'meals' | 'alternatives'>('tracker');
 
   // Server health test indicator
   const [apiActive, setApiActive] = useState<boolean>(false);
 
-  const isProfileValid = profile.age >= 12 && profile.weight >= 30 && profile.height >= 100;
-
   // Fast calculation indices:
   const weightKg = profile.weight;
-  const heightM = profile.height > 0 ? profile.height / 100 : 1;
-  const bmi = profile.height > 0 && profile.weight > 0
-    ? Number((weightKg / (heightM * heightM)).toFixed(1))
-    : 0;
+  const heightM = profile.height / 100;
+  const bmi = Number((weightKg / (heightM * heightM)).toFixed(1));
 
   // Determine BMI category using South Asian Specific thresholds 
+  // Overweight standards in South Asian populations begin lower (at 23.0) due to higher risk of cardiovascular diseases and abdominal visceral adiposity.
   let bmiCategory = "";
   let bmiColor = "";
   let bmiAdvice = "";
@@ -121,12 +117,10 @@ export default function App() {
 
   // Calculate energy needs using Harris-Benedict formula 
   let BMR = 0;
-  if (profile.age > 0 && profile.weight > 0 && profile.height > 0) {
-    if (profile.gender === 'male') {
-      BMR = 88.362 + (13.397 * profile.weight) + (4.799 * profile.height) - (5.677 * profile.age);
-    } else {
-      BMR = 447.593 + (9.247 * profile.weight) + (3.098 * profile.height) - (4.330 * profile.age);
-    }
+  if (profile.gender === 'male') {
+    BMR = 88.362 + (13.397 * profile.weight) + (4.799 * profile.height) - (5.677 * profile.age);
+  } else {
+    BMR = 447.593 + (9.247 * profile.weight) + (3.098 * profile.height) - (4.330 * profile.age);
   }
 
   const multipliers = {
@@ -139,17 +133,18 @@ export default function App() {
   const tdee = Math.round(BMR * multipliers[profile.activityLevel]);
 
   // Adjust macronutrients thresholds for conditions:
+  // e.g., low-carb for Diabetes, low-sodium for Hypertension, high-sugar penalties
   const hasDiabetes = profile.healthConditions.includes('diabetes');
   const hasHypertension = profile.healthConditions.includes('hypertension');
   const hasAnemia = profile.healthConditions.includes('anemia') || profile.gender === 'female';
 
   const limitCalories = tdee;
-  const targetCarbs = tdee > 0 ? (hasDiabetes ? Math.round((tdee * 0.45) / 4) : Math.round((tdee * 0.55) / 4)) : 0;
-  const targetProtein = profile.weight > 0 ? Math.round(profile.weight * 1.2) : 0; 
-  const targetFat = tdee > 0 ? Math.round((tdee * 0.25) / 9) : 0;
-  const limitSodium = hasHypertension ? 1500 : 2200; 
-  const limitSugar = hasDiabetes ? 20 : 35; 
-  const targetIron = hasAnemia ? 18 : 8; 
+  const targetCarbs = hasDiabetes ? Math.round((tdee * 0.45) / 4) : Math.round((tdee * 0.55) / 4);
+  const targetProtein = Math.round(profile.weight * 1.2); // 1.2g per kg rule of thumb
+  const targetFat = Math.round((tdee * 0.25) / 9);
+  const limitSodium = hasHypertension ? 1500 : 2200; // stricter limit in mg for hypertension
+  const limitSugar = hasDiabetes ? 20 : 35; // stricter limit in grams for diabetic patients
+  const targetIron = hasAnemia ? 18 : 8; // high target in mg for vulnerable anemia metrics
 
   // Compute live current totals from current log:
   const currentTotals = dailyFoodLog.reduce((acc, current) => {
@@ -164,7 +159,7 @@ export default function App() {
     };
   }, { calories: 0, carbs: 0, protein: 0, fat: 0, sodium: 0, sugar: 0, iron: 0 });
 
-  // Test API Availability
+  // Test API Availability on mount and whenever profile modifications occur
   useEffect(() => {
     fetch('/api/health')
       .then(res => res.json())
@@ -218,7 +213,7 @@ export default function App() {
     if (!detectedResult || !detectedResult.detectedItems) return;
     const itemsWithId = detectedResult.detectedItems.map(item => ({
       ...item,
-      id: `log-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`
+      id: `log-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
     }));
     setDailyFoodLog(prev => [...prev, ...itemsWithId]);
     setDetectedResult(null);
@@ -229,7 +224,7 @@ export default function App() {
   const handleAddQuickPreset = (food: Omit<FoodItem, 'id'>) => {
     const fresh: FoodItem = {
       ...food,
-      id: `log-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`
+      id: `log-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
     };
     setDailyFoodLog(prev => [...prev, fresh]);
   };
@@ -276,7 +271,7 @@ export default function App() {
     }
   };
 
-  // Trigger Personalized Meal Recommendations
+  // Trigger Personalized Meal Recommendations & budget checklist
   const triggerMealRecommendations = async () => {
     setIsGeneratingMealPlan(true);
     setMealError(null);
@@ -348,7 +343,7 @@ export default function App() {
                 <h1 className="text-xl sm:text-2xl font-black tracking-tight flex items-center gap-1.5 text-emerald-100">
                   NutriBD <span className="text-emerald-400">AI</span>
                 </h1>
-                <span className="text-[10px] bg-emerald-900 border border-emerald-700 px-2 py-0.5 rounded-full text-emerald-300 font-semibold tracking-wide">
+                <span className="text-[10px] bg-emerald-850 border border-emerald-700 px-2 py-0.5 rounded-full text-emerald-300 font-semibold tracking-wide">
                   HACKATHON RELEASE
                 </span>
               </div>
@@ -359,6 +354,7 @@ export default function App() {
           </div>
 
           <div className="flex flex-wrap items-center gap-3">
+            {/* AI License State Indicator */}
             <div className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center space-x-2 border ${
               apiActive 
                 ? 'bg-emerald-900/50 border-emerald-600/50 text-emerald-300' 
@@ -368,6 +364,7 @@ export default function App() {
               <span>{apiActive ? "Live Gemini AI Active" : "Local Data Core Active"}</span>
             </div>
 
+            {/* Quick Refresh */}
             <button 
               onClick={() => window.location.reload()}
               title="Reset Application"
@@ -380,7 +377,7 @@ export default function App() {
         </div>
       </header>
 
-      {/* Strict Prevention Disclaimer Banner */}
+      {/* Non-Medical Strict Prevention Disclaimer Banner */}
       <section className="bg-amber-50 border-y border-amber-100 py-2.5 px-4 text-center">
         <div className="max-w-7xl mx-auto flex items-center justify-center space-x-2 text-xs text-amber-900 font-medium">
           <AlertTriangle className="w-4.5 h-4.5 text-amber-600 flex-shrink-0" id="disclaimer-alert-icon" />
@@ -394,7 +391,7 @@ export default function App() {
       <main className="max-w-7xl mx-auto px-4 sm:px-6 py-6" id="main-section">
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
           
-          {/* LEFT SIDE PANEL */}
+          {/* LEFT SIDE PANEL (4 cols): User health profiling, BMI tracker & energy target calculators */}
           <section className="lg:col-span-4 space-y-6" id="left-sidebar">
             <HealthProfileForm
               profile={profile}
@@ -406,7 +403,7 @@ export default function App() {
               }}
             />
 
-            {/* Calculator Dashboard Card */}
+            {/* Local South Asian Nutrition Calculator Dashboard Card */}
             <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6 space-y-5">
               <div className="flex items-center space-x-2 pb-3 border-b border-slate-100">
                 <Scale className="w-5 h-5 text-emerald-600" />
@@ -443,6 +440,7 @@ export default function App() {
                 <div className="space-y-2 text-xs pt-1">
                   <span className="block text-[11px] font-bold text-slate-600 tracking-wider uppercase mb-1.5">Daily Macronutrient Limits & Targets</span>
                   
+                  {/* Carbs */}
                   <div className="space-y-1">
                     <div className="flex justify-between text-slate-500 text-[11px]">
                       <span>Carbohydrates Target:</span>
@@ -450,6 +448,7 @@ export default function App() {
                     </div>
                   </div>
 
+                  {/* Protein */}
                   <div className="space-y-1">
                     <div className="flex justify-between text-slate-500 text-[11px]">
                       <span>Protein Target:</span>
@@ -457,6 +456,7 @@ export default function App() {
                     </div>
                   </div>
 
+                  {/* Fat */}
                   <div className="space-y-1">
                     <div className="flex justify-between text-slate-500 text-[11px]">
                       <span>Healthy Fat Target:</span>
@@ -464,24 +464,27 @@ export default function App() {
                     </div>
                   </div>
 
+                  {/* Sodium */}
                   <div className="space-y-1">
                     <div className="flex justify-between text-slate-500 text-[11px]">
                       <span>Sodium Limit:</span>
-                      <span className="font-bold text-amber-700">{limitSodium} mg {hasHypertension ? "(Restricted - Hypertension)" : ""}</span>
+                      <span className="font-semibold text-amber-700 font-bold">{limitSodium} mg {hasHypertension ? "(Restricted - Hypertension)" : ""}</span>
                     </div>
                   </div>
 
+                  {/* Sugar */}
                   <div className="space-y-1">
                     <div className="flex justify-between text-slate-500 text-[11px]">
                       <span>Free-Sugars Max Limit:</span>
-                      <span className="font-bold text-red-600">{limitSugar} g {hasDiabetes ? "(Strict limit)" : ""}</span>
+                      <span className="font-semibold text-red-600 font-bold">{limitSugar} g {hasDiabetes ? "(Strict limit)" : ""}</span>
                     </div>
                   </div>
 
+                  {/* Iron */}
                   <div className="space-y-1">
                     <div className="flex justify-between text-slate-500 text-[11px]">
                       <span>Iron Focus Intake:</span>
-                      <span className="font-bold text-violet-700">{targetIron} mg {profile.gender === 'female' ? "(High Requirement)" : ""}</span>
+                      <span className="font-semibold text-violet-700 font-bold">{targetIron} mg {profile.gender === 'female' ? "(High Requirement)" : ""}</span>
                     </div>
                   </div>
                 </div>
@@ -516,7 +519,7 @@ export default function App() {
             </div>
           </section>
 
-          {/* RIGHT WORKSPACE SECTION */}
+          {/* RIGHT WORKSPACE SECTION (8 cols): Interactive Application Core */}
           <section className="lg:col-span-8 space-y-6" id="right-workspace">
             
             {/* Navigation Tabs */}
@@ -543,7 +546,7 @@ export default function App() {
                 className={`flex-1 min-w-[130px] py-3 text-xs font-bold rounded-xl transition-all flex items-center justify-center space-x-2 cursor-pointer ${
                   activeTab === 'risks'
                     ? 'bg-indigo-600 text-white shadow-sm'
-                    : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
+                    : 'text-slate-600 hover:text-slate-100/90 hover:bg-slate-50'
                 }`}
               >
                 <Sparkles className="w-4 h-4" />
@@ -581,30 +584,11 @@ export default function App() {
                 <UtensilsCrossed className="w-4 h-4" />
                 <span>Healthy Swapping</span>
               </button>
-
-              <button
-                onClick={() => setActiveTab('docs')}
-                className={`flex-1 min-w-[130px] py-3 text-xs font-bold rounded-xl transition-all flex items-center justify-center space-x-2 cursor-pointer ${
-                  activeTab === 'docs'
-                    ? 'bg-slate-900 text-white shadow-sm'
-                    : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
-                }`}
-              >
-                <HelpCircle className="w-4 h-4" />
-                <span>Docs</span>
-              </button>
             </div>
 
-            {!isProfileValid && (
-              <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 text-sm text-amber-900">
-                <strong>⚠️ Incomplete Profile Boundaries Detected</strong>
-                <p className="mt-2 text-xs text-amber-700">
-                  Please enter a valid Age (12-120), Height (100-270 cm), and Weight (30-500 kg) above to calculate risk predictions and meal recommendations. The dashboard panels remain visible while you type.
-                </p>
-              </div>
-            )}
-
-            {/* TAB WORKSPACE MODULES */}
+            {/* TAB INTERACTIVE WORKSPACE PAGES */}
+            
+            {/* VIEW 1: DAILY DIETARY LOG & ANALYZER */}
             {activeTab === 'tracker' && (
               <div className="space-y-6" id="tracker-pane">
                 
@@ -621,7 +605,7 @@ export default function App() {
                   </div>
 
                   <p className="text-xs text-slate-500 leading-relaxed">
-                    Enter the items you consumed today in chat style. You can write in English or use common transliterated Bangla terms (e.g., \"I ate raw Peyara, Moshur Dal, Laal Bhaat, Aloo Bhaji, and Rui Fish Curry\").
+                    Enter the items you consumed today in chat style. You can write in English or use common transliterated Bangla terms (e.g., "I ate raw Peyara, Moshur Dal, Laal Bhaat, Aloo Bhaji, and Rui Fish Curry").
                   </p>
 
                   <form onSubmit={handleAnalyzeFoodIntake} className="space-y-3">
@@ -668,203 +652,768 @@ export default function App() {
                     </div>
                   </form>
 
-                  {/* Detected Foods Result Template Grid */}
+                  {/* Detected Foods from API Result Box */}
                   {detectedResult && (
-                    <div className="mt-4 bg-slate-50 rounded-xl border border-dashed border-emerald-300 p-5 space-y-4">
+                    <div className="mt-4 bg-slate-50 rounded-xl border border-dashed border-emerald-300 p-5 space-y-4 animate-fade-in">
                       <div className="flex items-start justify-between">
                         <div>
                           <h4 className="font-bold text-xs text-emerald-900 uppercase tracking-widest flex items-center gap-1.5">
                             <CheckCircle className="w-4 h-4 text-emerald-600" />
                             AI Nutritional Breakdown Findings
                           </h4>
-                          <p className="text-[11px] text-slate-500 mt-0.5">Please review estimated macros before adding to plate trackers.</p>
+                          <p className="text-[11px] text-slate-500 mt-0.5">Please review estimated macros of foods matched by the AI before adding to daily plate tracking logs.</p>
                         </div>
                         <button
                           onClick={() => setDetectedResult(null)}
-                          className="text-slate-400 hover:text-slate-600 font-bold text-xs cursor-pointer"
+                          className="text-slate-400 hover:text-slate-600 font-bold text-xs"
                         >
                           Cancel
                         </button>
                       </div>
 
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
-                        {detectedResult.detectedItems?.map((item, idx) => (
-                          <div key={idx} className="p-3 bg-white border border-slate-100 rounded-xl flex justify-between items-center shadow-xs">
-                            <div>
-                              <p className="text-xs font-bold text-slate-800">{item.name}</p>
-                              <p className="text-[10px] text-slate-400 font-medium">{item.portion} • {item.calories} kcal</p>
+                        {detectedResult.detectedItems.map((item, idx) => (
+                          <div key={idx} className="bg-white p-3 rounded-lg border border-slate-150 flex flex-col justify-between">
+                            <div className="flex justify-between items-start">
+                              <span className="font-bold text-xs text-slate-800 pragmatist-label">{item.name}</span>
+                              <span className="text-[10px] text-teal-700 bg-teal-50 px-2 py-0.5 rounded-full font-semibold">{item.portion}</span>
                             </div>
-                            <span className="text-[10px] text-emerald-600 font-bold bg-emerald-50 px-2 py-0.5 rounded-md">Detected</span>
+                            <div className="grid grid-cols-4 gap-1 text-[10px] text-slate-500 font-medium mt-3 border-t border-slate-50 pt-2">
+                              <div>
+                                <span className="block text-[8px] text-slate-400 uppercase">Cal</span>
+                                <span className="font-bold text-slate-700">{Math.round(item.calories)} kcal</span>
+                              </div>
+                              <div>
+                                <span className="block text-[8px] text-slate-400 uppercase">Carb</span>
+                                <span className="font-bold text-slate-700">{Math.round(item.carbs)}g</span>
+                              </div>
+                              <div>
+                                <span className="block text-[8px] text-slate-400 uppercase">Pro</span>
+                                <span className="font-bold text-slate-700">{Math.round(item.protein)}g</span>
+                              </div>
+                              <div>
+                                <span className="block text-[8px] text-slate-400 uppercase">Fat</span>
+                                <span className="font-bold text-slate-700">{Math.round(item.fat)}g</span>
+                              </div>
+                            </div>
+                            <div className="flex justify-between items-center text-[9px] text-slate-400 mt-2 pt-1 border-t border-slate-50">
+                              <span>Sodium: {Math.round(item.sodium)}mg</span>
+                              <span>Sugar: {Math.round(item.sugar)}g</span>
+                              <span className="text-violet-700 font-bold">Iron: {item.iron}mg</span>
+                            </div>
                           </div>
                         ))}
                       </div>
 
-                      <div className="flex justify-end pt-2">
-                        <button
-                          onClick={handleAddAllToLog}
-                          className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold px-4 py-2 rounded-xl transition-all shadow-sm cursor-pointer"
-                        >
-                          + Add All to Daily Log
-                        </button>
-                      </div>
+                      <p className="text-xs text-emerald-800 bg-emerald-50 p-2.5 rounded-lg border border-emerald-100 italic">
+                        <strong>AI Clinical Note: </strong> {detectedResult.overallComments}
+                      </p>
+
+                      <button
+                        onClick={handleAddAllToLog}
+                        className="w-full bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold py-2.5 rounded-lg flex items-center justify-center space-x-1.5 transition-all cursor-pointer"
+                      >
+                        <Plus className="w-4 h-4" />
+                        <span>Confirm and Add Detected Items to Daily Tracker Plate</span>
+                      </button>
                     </div>
                   )}
                 </div>
 
-                {/* Dashboard Active Food Plate Track List */}
-                <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6 space-y-4">
-                  <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+                {/* Dashboard: Daily Nutrition Balance Sheet against calculated thresholds */}
+                <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6 space-y-6">
+                  <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between border-b border-slate-100 pb-4 gap-2">
                     <div>
-                      <h3 className="font-bold text-slate-800 text-base">Your Active Daily Plate Logs</h3>
-                      <p className="text-xs text-slate-400">Total accumulated macronutrient consumption summary tracker</p>
+                      <h3 className="font-bold text-slate-800 text-lg flex items-center gap-2">
+                        <Scale className="w-5 h-5 text-emerald-600" />
+                        My Daily Plate Tracking &amp; Macro Balance
+                      </h3>
+                      <p className="text-xs text-slate-500">Compare calculated nutrient aggregates consumed to your personalized RDA thresholds.</p>
                     </div>
+
                     {dailyFoodLog.length > 0 && (
                       <button
                         onClick={handleClearAllLogs}
-                        className="text-xs text-red-500 hover:text-red-700 font-semibold flex items-center gap-1 cursor-pointer"
+                        className="text-xs text-red-600 hover:text-red-800 font-bold flex items-center space-x-1 hover:underline cursor-pointer"
                       >
-                        <Trash2 className="w-3.5 h-3.5" /> Clear All
+                        <Trash2 className="w-3.5 h-3.5" />
+                        <span>Clear Today's Plate Log</span>
                       </button>
                     )}
                   </div>
 
                   {dailyFoodLog.length === 0 ? (
-                    <div className="text-center py-8 text-slate-400 text-xs">
-                      No foods logged yet for today. Use the text analyzer above or click on quick recommendation presets to begin tracking metrics!
+                    <div className="text-center py-10 px-4 bg-slate-50/70 border border-slate-100 rounded-xl space-y-3">
+                      <Apple className="w-9 h-9 text-slate-300 mx-auto" />
+                      <p className="text-sm text-slate-500 font-medium">Your diet plate is currently empty for today.</p>
+                      <p className="text-xs text-slate-400 max-w-md mx-auto">Use the AI analysis diary above, or add common traditional Bangladeshi food presets from the quick selection shelf below!</p>
                     </div>
                   ) : (
-                    <div className="space-y-4">
-                      {/* Active items lists */}
-                      <div className="divide-y divide-slate-100">
-                        {dailyFoodLog.map((item) => (
-                          <div key={item.id} className="py-2.5 flex items-center justify-between group">
-                            <div>
-                              <p className="text-xs font-bold text-slate-800">{item.name}</p>
-                              <p className="text-[11px] text-slate-400">{item.portion} — Cal: {item.calories} kcal | C: {item.carbs}g | P: {item.protein}g | F: {item.fat}g</p>
+                    <div className="space-y-6">
+                      
+                      {/* Interactive Visual Meters block */}
+                      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+                        
+                        {/* Calories ring indicator using custom beautiful animated SVG */}
+                        <div className="bg-slate-50/70 rounded-xl p-4 border border-slate-100 flex flex-col items-center justify-center text-center">
+                          <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-2">Calories Intake</span>
+                          
+                          <div className="relative w-24 h-24 flex items-center justify-center">
+                            <svg className="w-full h-full transform -rotate-90">
+                              <circle cx="48" cy="48" r="38" strokeWidth="6" stroke="#e2e8f0" fill="transparent" />
+                              <circle 
+                                cx="48" 
+                                cy="48" 
+                                r="38" 
+                                strokeWidth="6.5" 
+                                stroke={currentTotals.calories > limitCalories ? "#ef4444" : "#10b981"} 
+                                fill="transparent" 
+                                strokeDasharray={2 * Math.PI * 38}
+                                strokeDashoffset={2 * Math.PI * 38 * (1 - Math.min(1, currentTotals.calories / limitCalories))}
+                                strokeLinecap="round"
+                                className="transition-all duration-500"
+                              />
+                            </svg>
+                            <div className="absolute text-center">
+                              <span className="block text-base font-black text-slate-800 leading-none">{Math.round(currentTotals.calories)}</span>
+                              <span className="text-[9px] text-slate-400">of {limitCalories}</span>
                             </div>
-                            <button
-                              onClick={() => handleRemoveLogItem(item.id)}
-                              className="text-slate-300 hover:text-red-500 p-1 rounded-md transition-colors cursor-pointer"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
                           </div>
-                        ))}
+
+                          <span className="text-[10px] text-slate-500 font-medium mt-2">
+                            {currentTotals.calories > limitCalories ? (
+                              <span className="text-red-600 font-bold">Surpassed Target ({Math.round(currentTotals.calories - limitCalories)} excess)</span>
+                            ) : (
+                              <span>{Math.round(limitCalories - currentTotals.calories)} kcal remaining</span>
+                            )}
+                          </span>
+                        </div>
+
+                        {/* Carb vs Limit */}
+                        <div className="bg-slate-50/70 rounded-xl p-4 border border-slate-100 flex flex-col justify-between space-y-3">
+                          <div className="flex justify-between items-center">
+                            <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Carb balance</span>
+                            <span className="text-xs font-bold text-slate-800">{Math.round(currentTotals.carbs)}g / {targetCarbs}g limit</span>
+                          </div>
+                          
+                          <div className="space-y-1">
+                            <div className="w-full bg-slate-250 h-3.5 rounded-full overflow-hidden relative">
+                              <div 
+                                className={`h-full transition-all duration-500 ${currentTotals.carbs > targetCarbs ? 'bg-red-500' : 'bg-emerald-500'}`}
+                                style={{ width: `${Math.min(100, (currentTotals.carbs / targetCarbs) * 100)}%` }}
+                              />
+                            </div>
+                            <div className="flex justify-between text-[10px]">
+                              <span className="text-slate-400">0g</span>
+                              <span className="text-slate-400">{Math.round((currentTotals.carbs / targetCarbs) * 100)}% Consumed</span>
+                              <span className="text-slate-400">Max limit</span>
+                            </div>
+                          </div>
+
+                          <p className="text-[10px] text-slate-500 italic leading-tight">
+                            {hasDiabetes ? "🎯 Strictly restricted to safeguard pancreatic blood insulin spike ranges." : "Standard carbs threshold."}
+                          </p>
+                        </div>
+
+                        {/* Sodium and Micronutrients panel */}
+                        <div className="bg-slate-50/70 rounded-xl p-4 border border-slate-100 flex flex-col justify-between space-y-3">
+                          <div className="flex justify-between items-center animate-fade-in">
+                            <span className="text-[11px] font-bold text-indigo-900 uppercase tracking-wider">Sodium &amp; Sugar</span>
+                            <span className="text-[10px] text-slate-500 font-semibold">Targets Check</span>
+                          </div>
+
+                          <div className="space-y-2 text-[11px]">
+                            {/* Sodium bar */}
+                            <div className="space-y-1">
+                              <div className="flex justify-between text-[10px] text-slate-500">
+                                <span>Sodium (Salt):</span>
+                                <span className={currentTotals.sodium > limitSodium ? "text-red-600 font-bold" : "text-slate-800 font-bold"}>
+                                  {Math.round(currentTotals.sodium)}mg / {limitSodium}mg
+                                </span>
+                              </div>
+                              <div className="w-full bg-slate-200 h-1.5 rounded-full overflow-hidden">
+                                <div 
+                                  className={`h-full ${currentTotals.sodium > limitSodium ? 'bg-red-500' : 'bg-amber-500'}`}
+                                  style={{ width: `${Math.min(100, (currentTotals.sodium / limitSodium) * 100)}%` }}
+                                />
+                              </div>
+                            </div>
+
+                            {/* Sugar bar */}
+                            <div className="space-y-1">
+                              <div className="flex justify-between text-[10px] text-slate-500">
+                                <span>Added Sugars:</span>
+                                <span className={currentTotals.sugar > limitSugar ? "text-red-500 font-bold" : "text-slate-800 font-bold"}>
+                                  {Math.round(currentTotals.sugar)}g / {limitSugar}g
+                                </span>
+                              </div>
+                              <div className="w-full bg-slate-200 h-1.5 rounded-full overflow-hidden">
+                                <div 
+                                  className={`h-full ${currentTotals.sugar > limitSugar ? 'bg-red-500' : 'bg-red-400'}`}
+                                  style={{ width: `${Math.min(100, (currentTotals.sugar / limitSugar) * 100)}%` }}
+                                />
+                              </div>
+                            </div>
+                          </div>
+
+                          <span className="text-[9px] text-slate-400 block leading-none">High sodium drives arterial damage. Lower tableside salt (Kacha Lobon).</span>
+                        </div>
                       </div>
 
-                      {/* Cumulative progress tracking section */}
-                      <div className="bg-slate-50/50 rounded-xl p-4 border border-slate-100 grid grid-cols-2 sm:grid-cols-4 gap-4">
-                        <div>
-                          <p className="text-[10px] text-slate-400 uppercase font-bold">Calories</p>
-                          <p className="text-sm font-black text-slate-800">{currentTotals.calories} / <span className="text-slate-400 text-xs">{limitCalories} kcal</span></p>
+                      {/* Secondary Quick Micro status elements */}
+                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                        <div className="bg-slate-50 p-2.5 rounded-lg border border-slate-100 flex items-center justify-between">
+                          <span className="text-xs text-slate-500">Protein:</span>
+                          <span className="font-bold text-xs text-emerald-700">{Math.round(currentTotals.protein)}g <span className="text-[10px] text-slate-400">/ {targetProtein}g</span></span>
                         </div>
-                        <div>
-                          <p className="text-[10px] text-slate-400 uppercase font-bold">Carbs</p>
-                          <p className="text-sm font-black text-slate-800">{currentTotals.carbs}g / <span className="text-slate-400 text-xs">{targetCarbs}g</span></p>
+                        <div className="bg-slate-50 p-2.5 rounded-lg border border-slate-100 flex items-center justify-between">
+                          <span className="text-xs text-slate-500">Fats total:</span>
+                          <span className="font-bold text-xs text-amber-700">{Math.round(currentTotals.fat)}g <span className="text-[10px] text-slate-400">/ {targetFat}g</span></span>
                         </div>
-                        <div>
-                          <p className="text-[10px] text-slate-400 uppercase font-bold">Protein</p>
-                          <p className="text-sm font-black text-slate-800">{currentTotals.protein}g / <span className="text-slate-400 text-xs">{targetProtein}g</span></p>
+                        <div className="bg-slate-50 p-2.5 rounded-lg border border-slate-100 flex items-center justify-between col-span-2 sm:col-span-1">
+                          <span className="text-xs text-slate-500 font-bold text-violet-900">Iron (Fe):</span>
+                          <span className="font-bold text-xs text-violet-700">{currentTotals.iron}mg <span className="text-[10px] text-slate-400">/ {targetIron}mg</span></span>
                         </div>
-                        <div>
-                          <p className="text-[10px] text-slate-400 uppercase font-bold">Fats</p>
-                          <p className="text-sm font-black text-slate-800">{currentTotals.fat}g / <span className="text-slate-400 text-xs">{targetFat}g</span></p>
+                      </div>
+
+                      {/* Concrete Food Log Grid with precise deletion action */}
+                      <div className="space-y-2">
+                        <span className="block text-[11px] font-bold text-slate-600 uppercase tracking-widest mb-1">Plate Items Logged Today</span>
+                        <div className="divide-y divide-slate-100 border border-slate-100 rounded-xl overflow-hidden bg-white">
+                          {dailyFoodLog.map((food) => (
+                            <div key={food.id} className="p-3.5 flex items-center justify-between hover:bg-slate-50 transition-all text-xs">
+                              <div className="space-y-1">
+                                <div className="font-bold text-slate-800">{food.name}</div>
+                                <div className="text-[10px] text-slate-400">Serving size: {food.portion}</div>
+                              </div>
+                              <div className="flex items-center space-x-4">
+                                <div className="grid grid-cols-4 gap-2 text-right text-[10px] font-medium text-slate-500">
+                                  <div>
+                                    <span className="block text-[8px] text-slate-400">KCAL</span>
+                                    <span className="text-slate-800 font-semibold">{food.calories}</span>
+                                  </div>
+                                  <div>
+                                    <span className="block text-[8px] text-slate-400">CARB</span>
+                                    <span>{food.carbs}g</span>
+                                  </div>
+                                  <div>
+                                    <span className="block text-[8px] text-slate-400">PRO</span>
+                                    <span>{food.protein}g</span>
+                                  </div>
+                                  <div className="text-violet-700">
+                                    <span className="block text-[8px] text-slate-400">IRON</span>
+                                    <span className="font-semibold">{food.iron || 0}mg</span>
+                                  </div>
+                                </div>
+                                
+                                <button
+                                  onClick={() => handleRemoveLogItem(food.id)}
+                                  className="p-1 px-1.5 rounded bg-slate-100 hover:bg-red-50 text-slate-400 hover:text-red-500 transition-all cursor-pointer"
+                                  title="Remove from plate log"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
+                            </div>
+                          ))}
                         </div>
                       </div>
                     </div>
                   )}
+                </div>
 
-                  {/* Preset local food quick inserts array */}
-                  <div className="pt-4 border-t border-slate-100">
-                    <p className="text-xs font-bold text-slate-500 mb-2 uppercase tracking-wider">Quick Preset Street Food Additions:</p>
-                    <div className="flex flex-wrap gap-1.5">
-                      {PRESET_LOCAL_FOODS.slice(0, 5).map((food, i) => (
-                        <button
-                          key={i}
-                          onClick={() => handleAddQuickPreset(food)}
-                          className="bg-slate-100 hover:bg-emerald-50 hover:text-emerald-900 text-slate-600 text-[11px] font-semibold px-2.5 py-1 rounded-lg border border-slate-200/60 transition-all cursor-pointer"
-                        >
-                          + {food.name}
-                        </button>
-                      ))}
-                    </div>
+                {/* Local Food Presets Quick Shelf panel - Excellent for simple quick testing! */}
+                <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6 space-y-4">
+                  <div>
+                    <h3 className="font-bold text-slate-800 text-sm tracking-wide uppercase flex items-center gap-1.5">
+                      <Layers className="w-4 h-4 text-emerald-600" />
+                      Quick selection shelf: Bangladesh Local Foods
+                    </h3>
+                    <p className="text-xs text-slate-500">Click any traditional food matching your meal to instantly add it to your tracking logs. No manual input required.</p>
+                  </div>
+
+                  <div className="flex flex-wrap gap-2">
+                    {PRESET_LOCAL_FOODS.map((food, idx) => (
+                      <button
+                        key={idx}
+                        onClick={() => handleAddQuickPreset(food)}
+                        className="p-2 bg-slate-50 hover:bg-emerald-50 text-slate-700 hover:text-emerald-900 border border-slate-150 rounded-xl text-xs font-semibold flex items-center space-x-1.5 transition-all text-left cursor-pointer"
+                      >
+                        <Plus className="w-3.5 h-3.5 text-emerald-600" />
+                        <div>
+                          <span>{food.name}</span>
+                          <span className="text-[9px] text-slate-400 font-medium block">{food.portion} ({food.calories} kcal)</span>
+                        </div>
+                      </button>
+                    ))}
                   </div>
                 </div>
               </div>
             )}
 
-            {/* TAB INTERACTIVE EXTENSIONS FALLBACK BLOCKS */}
+            {/* VIEW 2: AI CLINICAL RISK ASSESSMENT */}
             {activeTab === 'risks' && (
-              <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6 space-y-4">
-                <h3 className="font-bold text-slate-800 text-base">AI Preventive Health Assessment</h3>
-                {riskAssessment ? (
-                  <div className="space-y-3 text-xs">
-                    <div className="p-3 bg-red-50 border border-red-100 text-red-800 rounded-xl">
-                      <p className="font-bold">Primary Risk Factor Alert:</p>
-                      <p>{riskAssessment.primaryRiskWarning || "Elevated metabolic load indicator detected on current dietary logs."}</p>
+              <div className="space-y-6 animate-fade-in" id="risks-pane">
+                <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6 space-y-6">
+                  
+                  <div className="flex items-center justify-between pb-4 border-b border-slate-100">
+                    <div className="flex items-center space-x-2.5">
+                      <div className="p-2.5 bg-indigo-50 text-indigo-700 rounded-xl">
+                        <Sparkles className="w-5 h-5" />
+                      </div>
+                      <div>
+                        <h3 className="font-bold text-slate-800 text-lg">AI Preventive Health Risk Factor Warning Engine</h3>
+                        <p className="text-xs text-slate-500">Reviews demographics, focuses, and food intake records against regional epidemiologic statistics.</p>
+                      </div>
                     </div>
-                    <p className="font-medium text-slate-600 leading-relaxed">{riskAssessment.preventiveAdviceString}</p>
-                  </div>
-                ) : (
-                  <div className="text-center py-6 text-slate-400 text-xs">
-                    Click "Generate AI Health Risks" on the left panel to execute an assessment.
-                  </div>
-                )}
-              </div>
-            )}
 
-            {activeTab === 'meals' && (
-              <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6 space-y-4">
-                <h3 className="font-bold text-slate-800 text-base">Affordable Meal Recipes &amp; Recommendations</h3>
-                {mealPlan ? (
-                  <div className="space-y-3 text-xs">
-                    <p className="font-bold text-emerald-800">Custom Daily Budget Menu Plan:</p>
-                    <p className="leading-relaxed font-medium text-slate-600">{mealPlan.recommendedPlanDescription}</p>
+                    <button
+                      onClick={triggerPreventiveRiskAssessment}
+                      disabled={isGeneratingRisks}
+                      className="bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white font-bold text-xs px-4 py-2 rounded-lg transition-all flex items-center space-x-1.5 cursor-pointer"
+                    >
+                      {isGeneratingRisks ? (
+                        <>
+                          <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                          <span>Computing...</span>
+                        </>
+                      ) : (
+                        <>
+                          <RefreshCw className="w-3.5 h-3.5" />
+                          <span>Re-calculate Risks</span>
+                        </>
+                      )}
+                    </button>
                   </div>
-                ) : (
-                  <div className="text-center py-6 text-slate-400 text-xs">
-                    Click "Affordable Meal Recommendations" on the left panel to pull automated recipe guides.
-                  </div>
-                )}
-              </div>
-            )}
 
-            {activeTab === 'alternatives' && (
-              <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6 space-y-4">
-                <h3 className="font-bold text-slate-800 text-base">Healthy Food Alternative Swapping Engine</h3>
-                <form onSubmit={handleSearchAlternative} className="flex gap-2">
-                  <input
-                    type="text"
-                    value={alternativeSearch}
-                    onChange={(e) => setAlternativeSearch(e.target.value)}
-                    placeholder="Search standard local food to swap (e.g., Paratha)"
-                    className="flex-1 text-xs border border-slate-200 rounded-xl px-3 py-2 focus:outline-none focus:ring-1 focus:ring-amber-500 font-medium"
-                  />
-                  <button type="submit" className="bg-amber-600 text-white text-xs px-4 py-2 rounded-xl font-bold hover:bg-amber-700 transition-colors cursor-pointer">
-                    Search Swaps
-                  </button>
-                </form>
+                  {riskError && (
+                    <div className="text-xs bg-red-50 border border-red-100 text-red-600 rounded-lg p-3">
+                      {riskError}
+                    </div>
+                  )}
 
-                <div className="text-xs text-slate-500">
-                  {alternativesList.length > 0 ? (
-                    <div className="space-y-3">
-                      {alternativesList.map((alt, id) => (
-                        <div key={id} className="p-3 bg-amber-50/50 border border-amber-100 rounded-xl">
-                          <p className="font-bold text-amber-900">{alt.unhealthyFood} ➔ {alt.healthierAlternative}</p>
-                          <p className="mt-1 text-slate-600">{alt.whyBetter}</p>
-                        </div>
-                      ))}
+                  {!riskAssessment && !isGeneratingRisks ? (
+                    <div className="text-center py-10 space-y-3 bg-slate-50 border border-slate-100 rounded-xl">
+                      <AlertTriangle className="w-9 h-9 text-slate-400 mx-auto" id="alert-no-risk" />
+                      <p className="text-sm text-slate-600 font-bold">No Risk Warnings Calculated Yet.</p>
+                      <p className="text-xs text-slate-400 max-w-sm mx-auto">Generate recommendations or click "Re-calculate Risks" to launch clinical-prevention algorithms tailored to Bangladesh.</p>
+                      <button
+                        onClick={triggerPreventiveRiskAssessment}
+                        className="bg-emerald-600 text-white text-xs font-bold py-2 px-4 rounded-xl cursor-pointer"
+                      >
+                        Run Assessment Now
+                      </button>
+                    </div>
+                  ) : isGeneratingRisks ? (
+                    <div className="py-20 flex flex-col items-center justify-center space-y-4">
+                      <RefreshCw className="w-10 h-10 text-indigo-600 animate-spin" />
+                      <p className="text-sm font-bold text-slate-700">Running AI Preventative Risk Classifiers...</p>
+                      <p className="text-xs text-slate-400 text-center max-w-sm">Comparing local diet plate records against indices for high sodium, diabetes hazards, and iron deficiency parameters in women.</p>
                     </div>
                   ) : (
-                    <p className="text-center py-4 text-slate-400">Type a food above or browse local parameters to match healthier adjustments.</p>
+                    <div className="space-y-6">
+                      
+                      {/* Overall Clinicians Summary Statement */}
+                      <div className="bg-indigo-50/70 border border-indigo-100 rounded-2xl p-5 space-y-2">
+                        <span className="text-[10px] font-bold text-indigo-800 uppercase tracking-widest block">Executive Summary</span>
+                        <p className="text-sm text-indigo-900 leading-relaxed font-medium">
+                          {riskAssessment.overallSummary}
+                        </p>
+                      </div>
+
+                      {/* Health Risk Alerts list items */}
+                      <div className="space-y-4">
+                        <span className="block text-[11px] font-bold text-slate-600 uppercase tracking-widest pl-1">Identified Potential Risk Warnings</span>
+                        
+                        {riskAssessment.alerts.map((alert, idx) => {
+                          const isHigh = alert.severity === 'high';
+                          const isMed = alert.severity === 'medium';
+                          
+                          let badgeBg = "bg-blue-50 text-blue-800 border-blue-150";
+                          if (isHigh) badgeBg = "bg-red-50 text-red-800 border-red-150";
+                          if (isMed) badgeBg = "bg-amber-50 text-amber-800 border-amber-150";
+
+                          return (
+                            <div key={idx} className="bg-white rounded-xl border border-slate-150 shadow-sm overflow-hidden text-xs transition-all hover:shadow">
+                              <div className="p-4 flex items-start justify-between gap-3 bg-slate-50/45 border-b border-slate-100">
+                                <div className="space-y-1">
+                                  <h4 className="font-extrabold text-sm text-slate-800">{alert.title}</h4>
+                                  <span className={`inline-block text-[9px] px-2 py-0.5 rounded-full font-bold border capitalize ${badgeBg}`}>
+                                    Severity Level: {alert.severity}
+                                  </span>
+                                </div>
+                                <AlertTriangle className={`w-5 h-5 flex-shrink-0 ${isHigh ? 'text-red-500' : isMed ? 'text-amber-500' : 'text-blue-500'}`} id={`risk-alert-icon-${idx}`} />
+                              </div>
+
+                              <div className="p-4 space-y-3.5">
+                                <p className="text-slate-600 leading-relaxed">
+                                  {alert.explanation}
+                                </p>
+
+                                {/* Actionable preventive hacks */}
+                                <div className="space-y-2 pt-2 border-t border-slate-50">
+                                  <span className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider">Localized Preventative Habits Tips:</span>
+                                  <ul className="space-y-1.5 pl-4 list-disc text-slate-700 leading-relaxed font-medium">
+                                    {alert.actionableSteps.map((step, sIdx) => (
+                                      <li key={sIdx}>{step}</li>
+                                    ))}
+                                  </ul>
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+
+                      {/* Sticky medical diagnostic warnings */}
+                      <div className="bg-red-50/30 border border-red-200/55 rounded-xl p-4 text-[11px] text-red-950/90 leading-relaxed space-y-1">
+                        <span className="font-extrabold text-red-800 block uppercase tracking-wider">🚨 Safe Usage &amp; Accountability Protocol</span>
+                        <p>{riskAssessment.disclaimer}</p>
+                      </div>
+                    </div>
                   )}
                 </div>
               </div>
             )}
 
+            {/* VIEW 3: PERSONALIZED DAILY MEAL PLANNER & SHOPPING bazar CHECKLIST */}
+            {activeTab === 'meals' && (
+              <div className="space-y-6 animate-fade-in" id="meals-pane">
+                <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6 space-y-6">
+                  
+                  <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between pb-4 border-b border-slate-100 gap-3">
+                    <div className="flex items-center space-x-2.5">
+                      <div className="p-2.5 bg-violet-50 text-violet-700 rounded-xl">
+                        <ShoppingBag className="w-5 h-5" />
+                      </div>
+                      <div>
+                        <h3 className="font-bold text-slate-800 text-lg">One-Day Budget-Conscious Dietary Planner</h3>
+                        <p className="text-xs text-slate-500">Generates custom meals using easily accessible ingredients from local Bangladesh markets.</p>
+                      </div>
+                    </div>
+
+                    <button
+                      onClick={triggerMealRecommendations}
+                      disabled={isGeneratingMealPlan}
+                      className="bg-violet-600 hover:bg-violet-700 disabled:opacity-50 text-white font-bold text-xs px-4 py-2 rounded-lg transition-all flex items-center space-x-1.5 cursor-pointer"
+                    >
+                      {isGeneratingMealPlan ? (
+                        <>
+                          <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                          <span>Planning...</span>
+                        </>
+                      ) : (
+                        <>
+                          <RefreshCw className="w-3.5 h-3.5" />
+                          <span>Re-generate Meal Diet</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+
+                  {mealError && (
+                    <div className="text-xs bg-red-50 border border-red-100 text-red-600 rounded-lg p-3">
+                      {mealError}
+                    </div>
+                  )}
+
+                  {!mealPlan && !isGeneratingMealPlan ? (
+                    <div className="text-center py-10 space-y-3 bg-slate-50 border border-slate-100 rounded-xl">
+                      <ShoppingBag className="w-9 h-9 text-slate-400 mx-auto" />
+                      <p className="text-sm text-slate-600 font-bold">No Meal Suggestion Generated Yet.</p>
+                      <p className="text-xs text-slate-400 max-w-sm mx-auto">Input your health conditions and select BDT budget choices, then click "Re-generate Meal Diet".</p>
+                      <button
+                        onClick={triggerMealRecommendations}
+                        className="bg-emerald-600 text-white text-xs font-bold py-2 px-4 rounded-xl cursor-pointer"
+                      >
+                        Generate Meal Recommendations
+                      </button>
+                    </div>
+                  ) : isGeneratingMealPlan ? (
+                    <div className="py-20 flex flex-col items-center justify-center space-y-4">
+                      <RefreshCw className="w-10 h-10 text-violet-600 animate-spin" />
+                      <p className="text-sm font-bold text-slate-700">Drafting personalized cooking schedules...</p>
+                      <p className="text-xs text-slate-400 text-center max-w-sm">Mapping local market items fitting BDT criteria for Bangladesh families with safe, fast cooking limits.</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-6">
+                      
+                      {/* Overall Dietary Advice banner statement */}
+                      <div className="bg-violet-50/70 border border-violet-100 rounded-2xl p-5 text-slate-800 text-xs leading-relaxed space-y-1">
+                        <span className="text-[10px] font-bold text-violet-800 uppercase tracking-widest block">Dietary &amp; Hydration Strategy</span>
+                        <p className="font-semibold text-violet-950">{mealPlan.dietaryAdvice}</p>
+                      </div>
+
+                      {/* Meal recommendations bento block map */}
+                      <div className="space-y-4">
+                        <span className="block text-[11px] font-bold text-slate-600 uppercase tracking-widest pl-1">1-Day Eating Plan Checklist</span>
+                        
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          {mealPlan.dailyMealRecommendations.map((rec, idx) => {
+                            let typeBg = "bg-amber-50 text-amber-900 border-amber-100";
+                            if (rec.mealType === 'lunch') typeBg = "bg-sky-50 text-sky-900 border-sky-101";
+                            if (rec.mealType === 'snack') typeBg = "bg-emerald-50 text-emerald-900 border-emerald-110";
+                            if (rec.mealType === 'dinner') typeBg = "bg-indigo-50 text-indigo-900 border-indigo-110";
+
+                            return (
+                              <div key={idx} className="bg-white rounded-xl border border-slate-150 p-4 space-y-3 hover:shadow-sm transition-all flex flex-col justify-between">
+                                <div className="space-y-2">
+                                  {/* Meal type header banner */}
+                                  <div className="flex justify-between items-center">
+                                    <span className={`text-[10px] uppercase font-mono font-bold px-2.5 py-0.5 rounded-full border ${typeBg}`}>
+                                      {rec.mealType}
+                                    </span>
+                                    <span className="text-[11px] font-bold text-emerald-700 bg-emerald-50 px-2.5 py-0.5 rounded-lg">
+                                      {rec.estimatedCost}
+                                    </span>
+                                  </div>
+
+                                  <div className="space-y-0.5">
+                                    <h4 className="font-extrabold text-sm text-slate-800">{rec.title}</h4>
+                                    {rec.banglaName && (
+                                      <span className="block text-xs font-bold text-emerald-800 font-bengali leading-none">{rec.banglaName}</span>
+                                    )}
+                                  </div>
+
+                                  {/* Metrics parameters list */}
+                                  <div className="grid grid-cols-4 gap-1 text-[10px] py-1 px-2.5 bg-slate-50 border border-slate-100 rounded-lg text-center font-bold text-slate-600">
+                                    <div>
+                                      <span className="block text-[8px] text-slate-400 font-medium">CAL</span>
+                                      <span>{rec.calories}</span>
+                                    </div>
+                                    <div>
+                                      <span className="block text-[8px] text-slate-400 font-medium">CARBS</span>
+                                      <span>{rec.carbs}g</span>
+                                    </div>
+                                    <div>
+                                      <span className="block text-[8px] text-slate-400 font-medium">PRO</span>
+                                      <span>{rec.protein}g</span>
+                                    </div>
+                                    <div>
+                                      <span className="block text-[8px] text-slate-400 font-medium">FAT</span>
+                                      <span>{rec.fat}g</span>
+                                    </div>
+                                  </div>
+
+                                  {/* Ingredients list block */}
+                                  <div className="space-y-1 text-xs">
+                                    <span className="block text-[10px] font-bold text-slate-400 uppercase">Ingredients list:</span>
+                                    <ul className="list-inside list-disc space-y-0.5 text-slate-600 pl-1 font-semibold leading-relaxed">
+                                      {rec.ingredients.map((ing, iIdx) => (
+                                        <li key={iIdx} className="truncate" title={ing}>{ing}</li>
+                                      ))}
+                                    </ul>
+                                  </div>
+                                </div>
+
+                                {/* Cooking hints */}
+                                <div className="space-y-1 text-xs pt-3 mt-3 border-t border-slate-50">
+                                  <span className="block text-[10px] font-bold text-slate-400 uppercase">Aesthetic Preparation:</span>
+                                  <ul className="space-y-1 text-slate-500 italic leading-snug">
+                                    {rec.preparations.map((prep, pIdx) => (
+                                      <li key={pIdx} className="pl-1.5 border-l-2 border-emerald-500">{prep}</li>
+                                    ))}
+                                  </ul>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+
+                      {/* Bazar Shopping list block */}
+                      <div className="bg-slate-50 border border-slate-150 rounded-xl p-5 space-y-3.5">
+                        <div className="flex items-center space-x-2">
+                          <ShoppingBag className="w-4.5 h-4.5 text-indigo-700" />
+                          <h4 className="font-extrabold text-sm text-slate-800">Fresh Kacha Bazar Grocery shopping list:</h4>
+                        </div>
+                        <p className="text-[11px] text-slate-500">Pick these up at your local neighborhood shop or wet market in Bangladesh to quickly prep your meals.</p>
+                        
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                          {mealPlan.groceryShoppingList.map((item, idx) => (
+                            <div key={idx} className="bg-white px-3 py-2 border border-slate-100 rounded-lg flex items-center space-x-2 text-xs font-semibold">
+                              <input type="checkbox" className="rounded text-emerald-600 focus:ring-emerald-500 w-3.5 h-3.5 pointer-events-auto cursor-pointer" id={`shop-${idx}`} />
+                              <label htmlFor={`shop-${idx}`} className="truncate text-slate-700 select-none cursor-pointer">{item}</label>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* VIEW 4: HEALTHIER FOOD SUBSTITUTIONS ("FOOD SWAPPING") */}
+            {activeTab === 'alternatives' && (
+              <div className="space-y-6 animate-fade-in" id="alternatives-pane">
+                <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6 space-y-6">
+                  
+                  <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between pb-4 border-b border-slate-100 gap-3">
+                    <div className="flex items-center space-x-2.5">
+                      <div className="p-2.5 bg-amber-50 text-amber-700 rounded-xl">
+                        <UtensilsCrossed className="w-5 h-5" />
+                      </div>
+                      <div>
+                        <h3 className="font-bold text-slate-800 text-lg">Smart Healthy Swaps &amp; Street-Food Hacking</h3>
+                        <p className="text-xs text-slate-500">Exchange oily starches and sugar traps with cheap local superfoods of equivalent BDT value.</p>
+                      </div>
+                    </div>
+
+                    {/* Fast custom search bar */}
+                    <form onSubmit={handleSearchAlternative} className="flex space-x-2 w-full sm:w-auto">
+                      <input
+                        type="text"
+                        value={alternativeSearch}
+                        onChange={(e) => setAlternativeSearch(e.target.value)}
+                        placeholder="e.g. Beguni, Porota, Biryani, Rosgulla"
+                        className="text-xs border border-slate-200 px-3 py-1.5 rounded-lg focus:outline-none focus:ring-1 focus:ring-amber-500 placeholder-slate-400 w-full sm:w-48"
+                      />
+                      <button
+                        type="submit"
+                        disabled={isGeneratingAlternatives}
+                        className="bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs px-3 py-1.5 rounded-lg flex items-center gap-1 cursor-pointer"
+                      >
+                        <Search className="w-3.5 h-3.5" />
+                        <span>Search</span>
+                      </button>
+                    </form>
+                  </div>
+
+                  {alternativeError && (
+                    <div className="text-xs bg-red-50 border border-red-101 text-red-600 p-3 rounded-lg">
+                      {alternativeError}
+                    </div>
+                  )}
+
+                  {isGeneratingAlternatives ? (
+                    <div className="py-20 flex flex-col items-center justify-center space-y-3">
+                      <RefreshCw className="w-8 h-8 text-amber-600 animate-spin" />
+                      <p className="text-xs font-bold text-slate-600">Cross-referencing glycemic indices of Bangladesh snacks...</p>
+                    </div>
+                  ) : alternativesList.length === 0 ? (
+                    <div className="text-center py-10 space-y-2 bg-slate-50 rounded-xl border border-slate-100">
+                      <HelpCircle className="w-8 h-8 text-slate-400 mx-auto" id="help-icon" />
+                      <p className="text-sm font-bold text-slate-600">No alternatives matches your custom search criteria.</p>
+                      <button
+                        onClick={() => {
+                          setAlternativeSearch("");
+                          fetchAlternatives();
+                        }}
+                        className="text-xs text-amber-700 font-bold hover:underline cursor-pointer"
+                      >
+                        Reset and show all default swaps
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="space-y-5">
+                      <span className="block text-[11px] font-bold text-slate-500 uppercase tracking-widest pl-1">Selected Substitution Alternatives Panel</span>
+                      
+                      <div className="grid grid-cols-1 gap-4">
+                        {alternativesList.map((item, idx) => {
+                          const calPreserved = (item.nutritionComparison.unhealthyCalories - item.nutritionComparison.healthyCalories);
+
+                          return (
+                            <div key={idx} className="bg-white rounded-xl border border-slate-150 overflow-hidden shadow-sm hover:shadow-md transition-all text-xs">
+                              
+                              <div className="grid grid-cols-1 md:grid-cols-12 select-none border-b border-slate-100 bg-slate-50/50">
+                                
+                                {/* Unhealthy Side */}
+                                <div className="md:col-span-5 p-4 space-y-1.5 border-r border-slate-100">
+                                  <span className="text-[9px] uppercase font-bold text-red-600 tracking-wider">Traditional Unhealthy Choice:</span>
+                                  <h4 className="font-extrabold text-sm text-slate-800 flex items-center gap-1">
+                                    <span>🚫 {item.unhealthyFood}</span>
+                                  </h4>
+                                  <span className="inline-block text-[10px] text-red-700 bg-red-50/50 px-2.5 py-0.5 rounded-full font-bold">
+                                    {item.nutritionComparison.unhealthyCalories} Calories per serving
+                                  </span>
+                                  {item.nutritionComparison.unhealthyBenefits && (
+                                    <p className="text-[10px] text-slate-400 mt-1 italic leading-tight">{item.nutritionComparison.unhealthyBenefits}</p>
+                                  )}
+                                </div>
+
+                                {/* Comparison separator badge */}
+                                <div className="md:col-span-2 p-3 flex flex-row md:flex-col items-center justify-center bg-amber-50/30 text-amber-800 text-center border-y md:border-y-0 md:border-r border-slate-100 gap-1">
+                                  <TrendingUp className="w-4 h-4 text-emerald-600 rotate-90" id={`trend-icon-${idx}`} />
+                                  <span className="text-[10px] font-black uppercase text-emerald-700 leading-tight">Saves:</span>
+                                  <span className="text-xs font-black text-emerald-600">{calPreserved} Cal</span>
+                                </div>
+
+                                {/* Healthy Swap Side */}
+                                <div className="md:col-span-5 p-4 space-y-1.5">
+                                  <span className="text-[9px] uppercase font-bold text-emerald-600 tracking-wider">Recommended Smart Swap:</span>
+                                  <h4 className="font-extrabold text-sm text-slate-800 flex items-center justify-between">
+                                    <span>✅ {item.healthierAlternative}</span>
+                                    {item.banglaAlternativeName && (
+                                      <span className="text-xs font-bold text-emerald-800 font-bengali">{item.banglaAlternativeName}</span>
+                                    )}
+                                  </h4>
+                                  <span className="inline-block text-[10px] text-emerald-700 bg-emerald-50 px-2.5 py-0.5 rounded-full font-bold">
+                                    {item.nutritionComparison.healthyCalories} Calories per serving
+                                  </span>
+                                  {item.nutritionComparison.healthyBenefits && (
+                                    <p className="text-[10px] text-slate-400 mt-1 italic leading-tight">{item.nutritionComparison.healthyBenefits}</p>
+                                  )}
+                                </div>
+
+                              </div>
+
+                              <div className="p-4 space-y-2">
+                                <p className="text-slate-600 leading-relaxed font-medium">
+                                  <strong>Why it makes an impact:</strong> {item.whyBetter}
+                                </p>
+
+                                <div className="flex flex-col sm:flex-row justify-between pt-2.5 border-t border-slate-50 text-[11px] text-slate-500 gap-2">
+                                  <div className="flex items-center space-x-1.5 font-semibold text-emerald-800 bg-emerald-50/50 px-2.5 py-1 rounded-lg">
+                                    <span>💲 Cost Analysis:</span>
+                                    <span>{item.approximatePriceDiff}</span>
+                                  </div>
+
+                                  <div className="flex items-center space-x-1.5 text-slate-600">
+                                    <span>🏪 Availability:</span>
+                                    <span className="font-bold">{item.localAffordability}</span>
+                                  </div>
+                                </div>
+                              </div>
+
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Healthy local tips summary box */}
+                  <div className="bg-amber-50 border border-amber-100 rounded-xl p-4 text-xs text-amber-900 leading-relaxed flex items-start space-x-2.5">
+                    <AlertTriangle className="w-5 h-5 text-amber-600 flex-shrink-0" id="alternative-alert-icon" />
+                    <div>
+                      <strong className="block text-amber-950 font-bold mb-0.5">💡 Traditional Cooking oil replacement advisory:</strong>
+                      In Bangladesh, commercial street snacks are often deep fried in cheaper, highly high-heat refined soybean oil (often re-boiled multiple times, accumulating highly dangerous cardiovascular toxic aldehydes). Whenever preparing snacks at home, substitute with expeller-pressed mustard oil (Shorishar Tel) or spray cook oils to protect target blood vessel wellness.
+                    </div>
+                  </div>
+
+                </div>
+              </div>
+            )}
           </section>
         </div>
       </main>
+
+      {/* Trust footer context */}
+      <footer className="bg-slate-900 text-slate-400 py-8 border-t border-slate-850 mt-12 text-center text-xs">
+        <div className="max-w-7xl mx-auto px-4 space-y-3.5">
+          <p className="text-[11px] text-slate-400 font-semibold tracking-wide flex items-center justify-center gap-1.5">
+            <HeartPulse className="w-4 h-4 text-emerald-500" />
+            <span>NutriBD AI — Clinically Modeled Nutrition Prevention Hackathon Assistant for Bangladesh</span>
+          </p>
+          <p className="max-w-2xl mx-auto text-[10px] text-slate-500 leading-relaxed">
+            Models configured based on South-Asian BMI classification guidelines (overweight ranges established starting at 23.0 BMI value limits). Developed utilizing Google Gemini AI API core token vectors to deliver fast, explainable preventative dietary meal recommendations, budget mapping indices, and interactive street food substitution metrics.
+          </p>
+          <div className="text-[9px] text-slate-600 pt-2.5 border-t border-slate-800">
+            &copy; 2026 NutriBD Project Team. All rights to datasets and frameworks reserved under Apache Licences.
+          </div>
+        </div>
+      </footer>
     </div>
   );
 }
