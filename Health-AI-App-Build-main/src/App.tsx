@@ -88,9 +88,17 @@ export default function App() {
   const [apiActive, setApiActive] = useState<boolean>(false);
 
   // Fast calculation indices:
-  const weightKg = profile.weight;
-  const heightM = profile.height / 100;
-  const bmi = Number((weightKg / (heightM * heightM)).toFixed(1));
+  const isProfileValid =
+    profile.age >= 12 &&
+    profile.age <= 110 &&
+    profile.weight >= 30 &&
+    profile.weight <= 200 &&
+    profile.height >= 100 &&
+    profile.height <= 250;
+
+  const weightKg = Math.max(0, profile.weight);
+  const heightM = profile.height > 0 ? profile.height / 100 : 1;
+  const bmi = profile.height > 0 ? Number((weightKg / (heightM * heightM)).toFixed(1)) : 0;
 
   // Determine BMI category using South Asian Specific thresholds 
   // Overweight standards in South Asian populations begin lower (at 23.0) due to higher risk of cardiovascular diseases and abdominal visceral adiposity.
@@ -243,6 +251,11 @@ export default function App() {
 
   // Trigger AI preventive risks
   const triggerPreventiveRiskAssessment = async () => {
+    if (!isProfileValid) {
+      setRiskError("Complete a valid Age, Weight, and Height before running risk assessment.");
+      return;
+    }
+
     setIsGeneratingRisks(true);
     setRiskError(null);
 
@@ -273,6 +286,11 @@ export default function App() {
 
   // Trigger Personalized Meal Recommendations & budget checklist
   const triggerMealRecommendations = async () => {
+    if (!isProfileValid) {
+      setMealError("Complete a valid Age, Weight, and Height before generating meal recommendations.");
+      return;
+    }
+
     setIsGeneratingMealPlan(true);
     setMealError(null);
 
