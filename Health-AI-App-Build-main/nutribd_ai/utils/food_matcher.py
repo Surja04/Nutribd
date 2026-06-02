@@ -42,13 +42,15 @@ def build_alias_dictionary(df):
             row["food_name_en"]
         )
 
-        aliases = str(row["aliases"]).split("|")
+        aliases = [row["food_name_en"], row.get("food_name_bn", "")]
+        aliases += str(row["aliases"]).split("|")
 
         for alias in aliases:
 
             cleaned_alias = normalize_text(alias)
 
-            alias_dict[cleaned_alias] = official_name
+            if cleaned_alias and cleaned_alias != "nan":
+                alias_dict.setdefault(cleaned_alias, official_name)
 
     return alias_dict
 

@@ -4,3 +4,7 @@ pandas
 fuzzywuzzy
 python-Levenshtein
 streamlit
+chromadb
+sentence-transformers
+networkx
+mcp

@@ -1,19 +1,62 @@
 import express from "express";
 import path from "path";
 import dotenv from "dotenv";
+import Anthropic from "@anthropic-ai/sdk";
 import { GoogleGenAI, Type } from "@google/genai";
+import { spawn } from "child_process";
 import { createServer as createViteServer } from "vite";
 
 dotenv.config();
-console.log("ENV CHECK:", process.env.GEMINI_API_KEY);
 const app = express();
 app.use(express.json());
 
-const PORT = 3000;
+const PORT = Number(process.env.PORT) || 3000;
+const LOCAL_LLM_MODEL = "phi3:mini";
+const PYTHON_COMMAND = process.env.PYTHON_COMMAND || (process.platform === "win32" ? "python" : "python3");
+const LOCAL_LLM_SCRIPT = path.join(process.cwd(), "nutribd_ai", "local_llm.py");
+const HEALTH_TIP_PROMPT = "Give one practical health tip for people in Bangladesh. Focus on affordable local foods like dal, shak, and fish. Under 80 words. Be specific and culturally relevant.";
+
+function runLocalLlm(action: string, payload: Record<string, unknown> = {}, timeoutMs = 120000): Promise<any> {
+  return new Promise((resolve, reject) => {
+    const child = spawn(PYTHON_COMMAND, [LOCAL_LLM_SCRIPT, action], {
+      stdio: ["pipe", "pipe", "pipe"],
+      windowsHide: true,
+    });
+    let stdout = "";
+    let stderr = "";
+    const timeout = setTimeout(() => {
+      child.kill();
+      reject(new Error(`Local LLM timed out after ${timeoutMs}ms.`));
+    }, timeoutMs);
+
+    child.stdout.on("data", chunk => { stdout += chunk.toString(); });
+    child.stderr.on("data", chunk => { stderr += chunk.toString(); });
+    child.on("error", error => {
+      clearTimeout(timeout);
+      reject(error);
+    });
+    child.on("close", code => {
+      clearTimeout(timeout);
+      try {
+        const parsed = JSON.parse(stdout.trim() || "{}");
+        if (code === 0) {
+          resolve(parsed);
+        } else {
+          reject(new Error(parsed.error || stderr.trim() || `Local LLM exited with code ${code}.`));
+        }
+      } catch {
+        reject(new Error(stderr.trim() || "Local LLM returned invalid JSON."));
+      }
+    });
+    child.stdin.end(JSON.stringify({ ...payload, model: LOCAL_LLM_MODEL }));
+  });
+}
 
 // Initialize GoogleGenAI from @google/genai
 const apiKey = process.env.GEMINI_API_KEY;
+const anthropicApiKey = process.env.ANTHROPIC_API_KEY;
 let aiClient: GoogleGenAI | null = null;
+const anthropicClient = anthropicApiKey ? new Anthropic({ apiKey: anthropicApiKey }) : null;
 
 if (apiKey) {
   try {
@@ -106,6 +149,57 @@ app.get("/api/health", (req, res) => {
   });
 });
 
+app.get("/api/local-llm-status", async (req, res) => {
+  try {
+    const status = await runLocalLlm("status", {}, 5000);
+    res.json(status);
+  } catch {
+    res.json({ ollama: false, model: LOCAL_LLM_MODEL });
+  }
+});
+
+app.get("/api/models-status", async (req, res) => {
+  let ollama = false;
+  try {
+    ollama = !!(await runLocalLlm("status", {}, 5000)).ollama;
+  } catch {
+    ollama = false;
+  }
+  res.json({ gemini: !!aiClient, claude: !!anthropicClient, ollama });
+});
+
+app.post("/api/health-tip", async (req, res) => {
+  try {
+    if (anthropicClient) {
+      const message = await anthropicClient.messages.create({
+        model: "claude-haiku-4-5",
+        max_tokens: 150,
+        messages: [{ role: "user", content: HEALTH_TIP_PROMPT }],
+      });
+      const text = message.content.find(block => block.type === "text");
+      if (text?.type === "text") {
+        return res.json({ tip: text.text, model_used: "claude-haiku-4-5" });
+      }
+    }
+
+    if (aiClient) {
+      const response = await aiClient.models.generateContent({
+        model: "gemini-3.5-flash",
+        contents: HEALTH_TIP_PROMPT,
+      });
+      return res.json({ tip: response.text.trim(), model_used: "gemini" });
+    }
+
+    return res.json({
+      tip: "Keep rice portions measured and add affordable dal, seasonal shak, and fish when possible. This improves fiber and protein while keeping everyday meals practical for a Bangladeshi household.",
+      model_used: "local-static",
+    });
+  } catch (err: any) {
+    console.error("Health tip generation failed:", err);
+    return res.status(500).json({ error: "Failed to generate a health tip.", details: err.message });
+  }
+});
+
 // 1. Food Intake Analyzer
 app.post("/api/analyze-food", async (req, res) => {
   const { foodText } = req.body;
@@ -114,6 +208,13 @@ app.post("/api/analyze-food", async (req, res) => {
   }
 
   if (!aiClient) {
+    try {
+      console.log("Analyzing with local Ollama fallback...");
+      return res.json(await runLocalLlm("analyze-food", { foodText }));
+    } catch (err: any) {
+      console.warn("Local Ollama analysis unavailable, using deterministic parser:", err.message);
+    }
+
     // Return mock analysis by scanning words
     console.log("Analyzing with fallback parser...");
     const lower = foodText.toLowerCase();
@@ -230,6 +331,13 @@ app.post("/api/calculate-risks", async (req, res) => {
     : "No recent logs captured.";
 
   if (!aiClient) {
+    try {
+      console.log("Generating health risks with local Ollama fallback...");
+      return res.json(await runLocalLlm("calculate-risks", { profile, foodLog }));
+    } catch (err: any) {
+      console.warn("Local Ollama risk analysis unavailable, using deterministic rules:", err.message);
+    }
+
     // Generate simple high quality rule-based risks
     console.log("Generating fallback risk factors...");
     const alerts = [];

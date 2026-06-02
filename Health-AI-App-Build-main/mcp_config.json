@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "nutribdai": {
+      "command": "python",
+      "args": ["nutribd_ai/mcp_server.py"]
+    }
+  }
+}
