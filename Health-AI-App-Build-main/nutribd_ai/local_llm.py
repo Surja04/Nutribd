@@ -8,7 +8,7 @@ from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
 OLLAMA_BASE_URL = "http://localhost:11434"
-DEFAULT_MODEL = "phi3:mini"
+DEFAULT_MODEL = "gemma2:2b"
 
 
 def _request_json(path: str, payload: Dict[str, Any] | None = None, timeout: int = 120) -> Dict[str, Any]:
@@ -43,12 +43,22 @@ def _extract_json(text: str) -> Dict[str, Any]:
     return json.loads(cleaned[start : end + 1])
 
 
-def _generate_json(prompt: str, model: str = DEFAULT_MODEL) -> Dict[str, Any]:
+def _generate_json(prompt: str, model: str = DEFAULT_MODEL, num_predict: int = 900) -> Dict[str, Any]:
     if not check_ollama():
         raise RuntimeError("Ollama is not running.")
     response = _request_json(
         "/api/generate",
-        {"model": model, "prompt": prompt, "stream": False, "format": "json"},
+        {
+            "model": model,
+            "prompt": prompt,
+            "stream": False,
+            "format": "json",
+            "options": {
+                "temperature": 0.2,
+                "num_predict": num_predict,
+                "num_ctx": 2048,
+            },
+        },
     )
     return _extract_json(str(response.get("response", "")))
 
@@ -90,13 +100,13 @@ def _has_food_data(item: Dict[str, Any]) -> bool:
 
 def analyze_food_local(food_text: str, model: str = DEFAULT_MODEL) -> Dict[str, Any]:
     """Parse a meal log using a local Ollama model."""
-    prompt = f"""You are a Bangladeshi nutrition expert.
-Parse this meal log and return only JSON with keys:
-detectedItems: list of objects with name, calories, protein, carbs, fat,
-sodium, sugar, iron, portion; overallComments: string.
-Use realistic estimates for local Bangladeshi portions.
+    prompt = f"""Return compact JSON only.
+You are a Bangladeshi nutrition expert. Parse the meal log into common local foods.
+Schema:
+{{"detectedItems":[{{"name":"food name","portion":"common Bangladeshi serving","calories":0,"protein":0,"carbs":0,"fat":0,"sodium":0,"sugar":0,"iron":0}}],"overallComments":"2-3 sentences with practical Bangladesh-specific nutrition notes."}}
+Use realistic household/street-food estimates. Do not include markdown.
 Meal: {food_text}"""
-    result = _generate_json(prompt, model=model)
+    result = _generate_json(prompt, model=model, num_predict=700)
     items = result.get("detectedItems", [])
     if not isinstance(items, list):
         raise ValueError("Ollama food analysis returned an invalid detectedItems value.")
@@ -108,17 +118,27 @@ Meal: {food_text}"""
 
 def get_risks_local(profile: Dict[str, Any], food_log: List[Dict[str, Any]], model: str = DEFAULT_MODEL) -> Dict[str, Any]:
     """Generate a non-diagnostic local health-risk summary."""
-    prompt = f"""You are a Bangladeshi preventive nutrition assistant.
-Return only JSON with keys: alerts, overallSummary, disclaimer.
-alerts must be a list of objects with title, severity (low|medium|high),
-explanation, actionableSteps (list of strings).
-Use South Asian BMI overweight threshold 23.0 and mention that this is
-educational guidance, not a medical diagnosis.
+    prompt = f"""Return JSON only. You are a Bangladeshi preventive nutrition assistant.
+Schema:
+{{"alerts":[{{"title":"specific risk title","severity":"low|medium|high","explanation":"2 detailed sentences tied to the profile and food log","actionableSteps":["specific local step 1","specific local step 2","specific local step 3"]}}],"overallSummary":"3 sentences summarizing the biggest nutrition risks and protective habits.","disclaimer":"educational wellness guidance, not medical diagnosis"}}
+Create exactly 3 alerts. Use South Asian BMI overweight threshold 23.0. Mention Bangladesh-specific risks such as high rice load, salty snacks/table salt, fried oil, and iron deficiency where relevant.
 Profile: {json.dumps(profile, ensure_ascii=False)}
 Food log: {json.dumps(food_log, ensure_ascii=False)}"""
-    result = _generate_json(prompt, model=model)
+    result = _generate_json(prompt, model=model, num_predict=900)
     if not isinstance(result.get("alerts", []), list):
         raise ValueError("Ollama risk analysis returned an invalid alerts value.")
+    for alert in result.get("alerts", []):
+        if not isinstance(alert, dict):
+            continue
+        steps = alert.get("actionableSteps", [])
+        if not isinstance(steps, list):
+            alert["actionableSteps"] = [str(steps)]
+        while len(alert["actionableSteps"]) < 3:
+            alert["actionableSteps"].append("Add dal, seasonal shak, and measured rice portions to keep the plan practical for Bangladeshi meals.")
+        explanation = _as_text(alert.get("explanation"), "This pattern can affect long-term cardiometabolic and micronutrient health.")
+        if len(explanation.split()) < 18:
+            explanation += " The recommendation is based on your logged meal pattern, South Asian risk thresholds, and common Bangladeshi cooking habits."
+        alert["explanation"] = explanation
     result["overallSummary"] = _as_text(result.get("overallSummary"), "Risk profile analyzed locally with Ollama.")
     result["disclaimer"] = _as_text(
         result.get("disclaimer"),

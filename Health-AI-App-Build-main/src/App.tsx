@@ -38,6 +38,16 @@ const PRESET_LOCAL_FOODS = [
 ];
 
 export default function App() {
+  type ModelMode = 'gemini' | 'ollama';
+  type ModelStatus = {
+    gemini: boolean;
+    geminiKeyPresent: boolean;
+    apiKeySource?: string | null;
+    ollama: boolean;
+    ollamaModel: string;
+    modelMode: ModelMode;
+    activeProvider: 'gemini' | 'ollama';
+  };
   // Localized state corresponding to Bangladeshi health focus conditions and standards
   const [profile, setProfile] = useState<HealthProfile>({
     age: 28,
@@ -85,7 +95,16 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<'tracker' | 'risks' | 'meals' | 'alternatives'>('tracker');
 
   // Server health test indicator
-  const [apiActive, setApiActive] = useState<boolean>(false);
+  const [modelStatus, setModelStatus] = useState<ModelStatus>({
+    gemini: false,
+    geminiKeyPresent: false,
+    apiKeySource: null,
+    ollama: false,
+    ollamaModel: 'phi3:mini',
+    modelMode: 'ollama',
+    activeProvider: 'ollama'
+  });
+  const [modelSwitchError, setModelSwitchError] = useState<string | null>(null);
 
   // Fast calculation indices:
   const weightKg = profile.weight;
@@ -160,19 +179,42 @@ export default function App() {
   }, { calories: 0, carbs: 0, protein: 0, fat: 0, sodium: 0, sugar: 0, iron: 0 });
 
   // Test API Availability on mount and whenever profile modifications occur
+  const refreshModelStatus = async () => {
+    try {
+      const response = await fetch('/api/models-status');
+      const data = await response.json();
+      setModelStatus(data);
+    } catch (err) {
+      console.warn("NutriBD AI model status check failed.", err);
+    }
+  };
+
   useEffect(() => {
-    fetch('/api/health')
-      .then(res => res.json())
-      .then(data => {
-        if (data && data.status === 'ok') {
-          setApiActive(true);
-        }
-      })
-      .catch(err => {
-        console.warn("NutriBD AI Server check failed, fallback mode activated natively.", err);
-        setApiActive(false);
-      });
+    refreshModelStatus();
   }, []);
+
+  const changeModelMode = async (mode: ModelMode) => {
+    try {
+      setModelSwitchError(null);
+      const response = await fetch('/api/model-mode', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mode })
+      });
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        throw new Error(data.error || "Unable to switch model mode.");
+      }
+      await refreshModelStatus();
+    } catch (err: any) {
+      console.error(err);
+      setModelSwitchError(err.message || "Unable to switch model mode.");
+    }
+  };
+
+  const toggleModelMode = () => {
+    changeModelMode(modelStatus.modelMode === 'gemini' ? 'ollama' : 'gemini');
+  };
 
   // Fetch initial food alternatives
   useEffect(() => {
@@ -354,15 +396,33 @@ export default function App() {
           </div>
 
           <div className="flex flex-wrap items-center gap-3">
-            {/* AI License State Indicator */}
-            <div className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center space-x-2 border ${
-              apiActive 
+            {/* AI provider switch */}
+            <button
+              type="button"
+              onClick={toggleModelMode}
+              title={`Click to switch to ${modelStatus.modelMode === 'gemini' ? 'Ollama' : 'Gemini'}`}
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center space-x-2 border transition-all hover:brightness-110 cursor-pointer ${
+              modelStatus.activeProvider === 'gemini'
                 ? 'bg-emerald-900/50 border-emerald-600/50 text-emerald-300' 
-                : 'bg-amber-950/40 border-amber-700/50 text-amber-300'
+                : 'bg-sky-950/50 border-sky-700/60 text-sky-300'
             }`}>
-              <div className={`w-2 h-2 rounded-full ${apiActive ? 'bg-emerald-400' : 'bg-amber-400 animate-ping'}`} />
-              <span>{apiActive ? "Live Gemini AI Active" : "Local Data Core Active"}</span>
-            </div>
+              <div className={`w-2 h-2 rounded-full ${
+                modelStatus.activeProvider === 'gemini'
+                  ? 'bg-emerald-400'
+                  : 'bg-sky-400'
+              }`} />
+              <span>
+                {modelStatus.activeProvider === 'gemini'
+                  ? "Live Gemini AI Active"
+                  : "Ollama Live"}
+              </span>
+            </button>
+
+            {modelSwitchError && (
+              <span className="max-w-xs text-[11px] font-semibold text-amber-200">
+                {modelSwitchError}
+              </span>
+            )}
 
             {/* Quick Refresh */}
             <button 

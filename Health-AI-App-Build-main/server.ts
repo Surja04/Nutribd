@@ -1,20 +1,39 @@
 import express from "express";
 import path from "path";
 import dotenv from "dotenv";
-import Anthropic from "@anthropic-ai/sdk";
 import { GoogleGenAI, Type } from "@google/genai";
 import { spawn } from "child_process";
 import { createServer as createViteServer } from "vite";
 
+dotenv.config({ path: ".env.local" });
 dotenv.config();
 const app = express();
 app.use(express.json());
 
 const PORT = Number(process.env.PORT) || 3000;
-const LOCAL_LLM_MODEL = "phi3:mini";
+const LOCAL_LLM_MODEL = process.env.OLLAMA_MODEL || "gemma2:2b";
+const GEMINI_MODEL = process.env.GEMINI_MODEL || "gemini-2.5-flash";
+const GEMINI_TIMEOUT_MS = Number(process.env.GEMINI_TIMEOUT_MS) || 30000;
+const USE_OLLAMA_FOR_RISKS = process.env.USE_OLLAMA_FOR_RISKS === "true";
+const LOCAL_LLM_RISK_TIMEOUT_MS = Number(process.env.LOCAL_LLM_RISK_TIMEOUT_MS) || 8000;
 const PYTHON_COMMAND = process.env.PYTHON_COMMAND || (process.platform === "win32" ? "python" : "python3");
 const LOCAL_LLM_SCRIPT = path.join(process.cwd(), "nutribd_ai", "local_llm.py");
 const HEALTH_TIP_PROMPT = "Give one practical health tip for people in Bangladesh. Focus on affordable local foods like dal, shak, and fish. Under 80 words. Be specific and culturally relevant.";
+const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY || process.env.API_KEY || "";
+const apiKeySource = process.env.GEMINI_API_KEY
+  ? "GEMINI_API_KEY"
+  : process.env.GOOGLE_API_KEY
+    ? "GOOGLE_API_KEY"
+    : process.env.API_KEY
+      ? "API_KEY"
+      : null;
+type ModelMode = "gemini" | "ollama";
+const MODEL_MODES = new Set<ModelMode>(["gemini", "ollama"]);
+let modelMode: ModelMode = MODEL_MODES.has(process.env.MODEL_MODE as ModelMode)
+  ? process.env.MODEL_MODE as ModelMode
+  : apiKey
+    ? "gemini"
+    : "ollama";
 
 function runLocalLlm(action: string, payload: Record<string, unknown> = {}, timeoutMs = 120000): Promise<any> {
   return new Promise((resolve, reject) => {
@@ -52,11 +71,37 @@ function runLocalLlm(action: string, payload: Record<string, unknown> = {}, time
   });
 }
 
+function shouldUseGemini(): boolean {
+  return !!aiClient && modelMode === "gemini";
+}
+
+function shouldUseOllamaForGeneratedText(): boolean {
+  return modelMode === "ollama";
+}
+
+function getActiveProvider(): "gemini" | "ollama" {
+  if (shouldUseGemini()) return "gemini";
+  return "ollama";
+}
+
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<T>((_, reject) => {
+      setTimeout(() => reject(new Error(`${label} timed out after ${timeoutMs}ms.`)), timeoutMs);
+    })
+  ]);
+}
+
+function generateGeminiContent(request: any): Promise<any> {
+  if (!aiClient) {
+    return Promise.reject(new Error("Gemini client is not configured."));
+  }
+  return withTimeout(aiClient.models.generateContent(request), GEMINI_TIMEOUT_MS, "Gemini request");
+}
+
 // Initialize GoogleGenAI from @google/genai
-const apiKey = process.env.GEMINI_API_KEY;
-const anthropicApiKey = process.env.ANTHROPIC_API_KEY;
 let aiClient: GoogleGenAI | null = null;
-const anthropicClient = anthropicApiKey ? new Anthropic({ apiKey: anthropicApiKey }) : null;
 
 if (apiKey) {
   try {
@@ -68,12 +113,12 @@ if (apiKey) {
         }
       }
     });
-    console.log("NutriBD AI: GoogleGenAI SDK initialized successfully.");
+    console.log(`NutriBD AI: GoogleGenAI SDK initialized successfully from ${apiKeySource}.`);
   } catch (err) {
     console.error("NutriBD AI: Failed to initialize GoogleGenAI:", err);
   }
 } else {
-  console.warn("NutriBD AI Warning: GEMINI_API_KEY not found in environment. Fallback high-quality static local datasets will be active.");
+  console.warn("NutriBD AI Warning: no Gemini key found. Set GEMINI_API_KEY, GOOGLE_API_KEY, or API_KEY in .env.local to enable Gemini locally.");
 }
 
 // -------------------------------------------------------------
@@ -136,6 +181,123 @@ const FALLBACK_ALTERNATIVES = [
   }
 ];
 
+function buildFallbackRiskAssessment(profile: any, foodLog: any[] = []) {
+  console.log("Generating fallback risk factors...");
+  const alerts: Array<{
+    title: string;
+    severity: "low" | "medium" | "high";
+    explanation: string;
+    actionableSteps: string[];
+  }> = [];
+  const heightM = Number(profile.height || 0) / 100;
+  const bmi = heightM > 0 ? Number((Number(profile.weight || 0) / (heightM * heightM)).toFixed(1)) : null;
+  const foodNames = foodLog.map((f: any) => String(f.name || "").toLowerCase()).join(" ");
+
+  let totalCalories = 0;
+  let totalCarbs = 0;
+  let totalFat = 0;
+  let totalProtein = 0;
+  let totalIron = 0;
+  let totalSodium = 0;
+  let totalSugar = 0;
+  foodLog.forEach((f: any) => {
+    totalCalories += (f.calories || 0);
+    totalCarbs += (f.carbs || 0);
+    totalFat += (f.fat || 0);
+    totalProtein += (f.protein || 0);
+    totalIron += (f.iron || 0);
+    totalSodium += (f.sodium || 0);
+    totalSugar += (f.sugar || 0);
+  });
+
+  if (profile.healthConditions.includes('diabetes') || totalCarbs > 70 || totalSugar > 18) {
+    alerts.push({
+      title: "Carbohydrate Load and Glucose Spike Risk",
+      severity: profile.healthConditions.includes('diabetes') ? "high" : "medium",
+      explanation: `Your logged meal has about ${Math.round(totalCarbs)}g carbohydrates and ${Math.round(totalSugar)}g sugar, mostly from refined flour, rice, or sweetened tea patterns common in Bangladesh. This can create sharp post-meal glucose swings, especially when the meal has limited fiber-rich shak, dal, or whole grains.`,
+      actionableSteps: [
+        "Keep rice to a measured bowl and add dal plus seasonal shak before taking a second serving.",
+        "Replace sweetened milk tea with unsweetened lal cha, ginger tea, or lightly sweetened tea.",
+        "Choose atta ruti or laal bhaat more often than paratha, white rice, or other refined starches."
+      ]
+    });
+  }
+
+  if (totalFat > 18 || /(fried|paratha|porota|singara|puri|bhaji|rezala)/.test(foodNames)) {
+    alerts.push({
+      title: "Fried Oil and Saturated Fat Burden",
+      severity: totalFat > 30 || profile.healthConditions.includes('cholesterol') ? "high" : "medium",
+      explanation: `The current plate contains about ${Math.round(totalFat)}g fat and includes fried or oil-heavy foods. Reheated soybean oil, paratha, bhaji, and street snacks can raise calorie density quickly and may worsen cholesterol or heart-risk patterns over time.`,
+      actionableSteps: [
+        "Swap oil-fried paratha for dry atta ruti or lightly brushed ruti most weekdays.",
+        "Cook bhaji with a measured teaspoon of mustard or rice-bran oil instead of free-pouring oil.",
+        "Add cucumber, tomato, or lemon salad beside oily foods to increase volume without adding calories."
+      ]
+    });
+  }
+
+  if (profile.healthConditions.includes('hypertension') || totalSodium > 500) {
+    alerts.push({
+      title: "Sodium and Blood Pressure Watch",
+      severity: profile.healthConditions.includes('hypertension') || totalSodium > 1500 ? "high" : "medium",
+      explanation: `This log contains around ${Math.round(totalSodium)}mg sodium before any added table salt. In Bangladeshi meals, achar, spice mixes, fried snacks, and kacha lobon can quietly push sodium much higher than the visible food list suggests.`,
+      actionableSteps: [
+        "Avoid adding kacha lobon at the table and use lemon, chili, coriander, or roasted cumin for flavor.",
+        "Limit packaged spice mixes, achar, chanachur, and salty street snacks on the same day.",
+        "Pair lunch or dinner with potassium-rich local foods like lau, pepe, cucumber, and dal when possible."
+      ]
+    });
+  }
+
+  if ((profile.gender === 'female' || profile.healthConditions.includes('anemia')) && totalIron < 5) {
+    alerts.push({
+      title: "Iron and Micronutrient Gap",
+      severity: profile.healthConditions.includes('anemia') ? "high" : "medium",
+      explanation: `Your logged foods provide only about ${totalIron.toFixed(1)}mg iron, which is low for many adult women and anemia-prone users. Bangladesh-specific meals can improve this cheaply by combining iron-rich shak, dal, fish, or egg with vitamin C sources that improve absorption.`,
+      actionableSteps: [
+        "Add lal shak, kolmi shak, kachu shak, or moshur dal to at least one meal daily.",
+        "Squeeze lemon over dal, fish, or shak, or eat guava/amra after meals to support iron absorption.",
+        "Avoid taking tea immediately with iron-rich meals; keep tea at least one hour away when possible."
+      ]
+    });
+  }
+
+  if (profile.activityLevel === 'sedentary' || (bmi !== null && bmi >= 23)) {
+    alerts.push({
+      title: "South Asian BMI and Activity Risk",
+      severity: bmi !== null && bmi >= 23 ? "medium" : "low",
+      explanation: `${bmi !== null ? `Your BMI is approximately ${bmi}, and South Asian risk often starts rising from BMI 23.0 rather than 25.0. ` : ""}A sedentary routine makes refined carbohydrates and oil-heavy snacks harder to balance, even when total calories do not look extreme.`,
+      actionableSteps: [
+        "Walk briskly for 20-30 minutes after the largest rice-based meal when practical.",
+        "Use fish, egg, dal, or chhola to raise protein so meals feel filling with less rice.",
+        "Keep fried snacks occasional and pair them with a lighter dinner rather than another starch-heavy meal."
+      ]
+    });
+  }
+
+  if (alerts.length === 0) {
+    alerts.push({
+      title: "Balanced Maintenance Plan",
+      severity: "low",
+      explanation: "Your current log does not show a major single nutrient warning, but prevention depends on consistency across the week. Keep variety high with dal, fish or egg, seasonal vegetables, and measured rice portions.",
+      actionableSteps: [
+        "Build most plates around half vegetables, one quarter protein, and one quarter rice or ruti.",
+        "Use fruit such as peyara, banana, or papaya as the default sweet snack.",
+        "Keep daily water intake steady, especially in hot Bangladeshi weather."
+      ]
+    });
+  }
+
+  const topAlerts = alerts.slice(0, 4);
+  const overallSummary = `Risk profile computed for a ${profile.age}-year-old ${profile.gender}${bmi !== null ? ` with BMI ${bmi}` : ""}. The logged foods total about ${Math.round(totalCalories)} kcal, ${Math.round(totalCarbs)}g carbs, ${Math.round(totalFat)}g fat, ${Math.round(totalProtein)}g protein, ${Math.round(totalSodium)}mg sodium, and ${totalIron.toFixed(1)}mg iron. Detected ${topAlerts.length} prevention priorities using Bangladeshi meal patterns, South Asian BMI thresholds, and the selected health profile.`;
+
+  return {
+    alerts: topAlerts,
+    overallSummary,
+    disclaimer: "DISCLAIMER: This system is powered by AI and exists solely for health awareness and educational purposes. It does NOT claim to provide medical diagnosis, nor should it substitute professional clinical evaluation."
+  };
+}
+
 // -------------------------------------------------------------
 // Endpoints Definition
 // -------------------------------------------------------------
@@ -145,6 +307,9 @@ app.get("/api/health", (req, res) => {
   res.json({
     status: "ok",
     apiActive: !!aiClient,
+    geminiKeyPresent: !!apiKey,
+    apiKeySource,
+    modelMode,
     localTime: new Date().toISOString()
   });
 });
@@ -165,26 +330,46 @@ app.get("/api/models-status", async (req, res) => {
   } catch {
     ollama = false;
   }
-  res.json({ gemini: !!aiClient, claude: !!anthropicClient, ollama });
+  res.json({
+    gemini: !!aiClient,
+    geminiKeyPresent: !!apiKey,
+    apiKeySource,
+    ollama,
+    ollamaModel: LOCAL_LLM_MODEL,
+    modelMode,
+    activeProvider: getActiveProvider()
+  });
+});
+
+app.post("/api/model-mode", async (req, res) => {
+  const nextMode = req.body?.mode as ModelMode;
+  if (!MODEL_MODES.has(nextMode)) {
+    return res.status(400).json({ error: "Invalid model mode. Use gemini or ollama." });
+  }
+  if (nextMode === "gemini" && !aiClient) {
+    return res.status(409).json({
+      error: "Gemini is not configured locally. Add GEMINI_API_KEY, GOOGLE_API_KEY, or API_KEY to .env.local and restart the dev server."
+    });
+  }
+  if (nextMode === "ollama") {
+    try {
+      const status = await runLocalLlm("status", {}, 5000);
+      if (!status.ollama) {
+        return res.status(409).json({ error: "Ollama is not running locally. Start Ollama, then try again." });
+      }
+    } catch {
+      return res.status(409).json({ error: "Ollama is not reachable locally. Start Ollama, then try again." });
+    }
+  }
+  modelMode = nextMode;
+  res.json({ modelMode, activeProvider: getActiveProvider() });
 });
 
 app.post("/api/health-tip", async (req, res) => {
   try {
-    if (anthropicClient) {
-      const message = await anthropicClient.messages.create({
-        model: "claude-haiku-4-5",
-        max_tokens: 150,
-        messages: [{ role: "user", content: HEALTH_TIP_PROMPT }],
-      });
-      const text = message.content.find(block => block.type === "text");
-      if (text?.type === "text") {
-        return res.json({ tip: text.text, model_used: "claude-haiku-4-5" });
-      }
-    }
-
-    if (aiClient) {
-      const response = await aiClient.models.generateContent({
-        model: "gemini-3.5-flash",
+    if (shouldUseGemini()) {
+      const response = await generateGeminiContent({
+        model: GEMINI_MODEL,
         contents: HEALTH_TIP_PROMPT,
       });
       return res.json({ tip: response.text.trim(), model_used: "gemini" });
@@ -207,12 +392,14 @@ app.post("/api/analyze-food", async (req, res) => {
     return res.status(400).json({ error: "Please submit description of recent meals." });
   }
 
-  if (!aiClient) {
-    try {
-      console.log("Analyzing with local Ollama fallback...");
-      return res.json(await runLocalLlm("analyze-food", { foodText }));
-    } catch (err: any) {
-      console.warn("Local Ollama analysis unavailable, using deterministic parser:", err.message);
+  if (!shouldUseGemini()) {
+    if (shouldUseOllamaForGeneratedText()) {
+      try {
+        console.log("Analyzing with local Ollama...");
+        return res.json(await runLocalLlm("analyze-food", { foodText }, 30000));
+      } catch (err: any) {
+        console.warn("Local Ollama analysis unavailable, using deterministic parser:", err.message);
+      }
     }
 
     // Return mock analysis by scanning words
@@ -270,8 +457,8 @@ Provide a clean breakdown of specific foods detected, giving:
 - Calorie estimation, carbohydrates (g), protein (g), fat (g), sodium (mg), sugar (g), iron (mg)
 Make sure the metrics are realistic. Also write a short overall friendly clinical review comment.`;
 
-    const response = await aiClient.models.generateContent({
-      model: "gemini-3.5-flash",
+    const response = await generateGeminiContent({
+      model: GEMINI_MODEL,
       contents: prompt,
       config: {
         responseMimeType: "application/json",
@@ -330,89 +517,17 @@ app.post("/api/calculate-risks", async (req, res) => {
     ? foodLog.map((f: any) => `${f.name} (${f.portion}): ${f.calories}kcal, ${f.carbs}g Carbs, ${f.protein}g Protein, ${f.fat}g Fat, ${f.sodium}mg Sodium).`).join(" ")
     : "No recent logs captured.";
 
-  if (!aiClient) {
-    try {
-      console.log("Generating health risks with local Ollama fallback...");
-      return res.json(await runLocalLlm("calculate-risks", { profile, foodLog }));
-    } catch (err: any) {
-      console.warn("Local Ollama risk analysis unavailable, using deterministic rules:", err.message);
+  if (!shouldUseGemini()) {
+    if (modelMode === "ollama" || USE_OLLAMA_FOR_RISKS) {
+      try {
+        console.log(`Generating health risks with local Ollama fallback (${LOCAL_LLM_RISK_TIMEOUT_MS}ms timeout)...`);
+        return res.json(await runLocalLlm("calculate-risks", { profile, foodLog }, LOCAL_LLM_RISK_TIMEOUT_MS));
+      } catch (err: any) {
+        console.warn("Local Ollama risk analysis unavailable, using deterministic rules:", err.message);
+      }
     }
 
-    // Generate simple high quality rule-based risks
-    console.log("Generating fallback risk factors...");
-    const alerts = [];
-    let overallSummary = `Risk profile computed for a ${profile.age}-year-old ${profile.gender}. `;
-
-    // Iron deficiency risk
-    let totalIron = 0;
-    let totalSodium = 0;
-    let totalSugar = 0;
-    if (foodLog && foodLog.length > 0) {
-      foodLog.forEach((f: any) => {
-        totalIron += (f.iron || 0);
-        totalSodium += (f.sodium || 0);
-        totalSugar += (f.sugar || 0);
-      });
-    }
-
-    if (profile.gender === 'female' && totalIron < 5) {
-      alerts.push({
-        title: "Potential Iron Deficiency Concern (Anemia Risk)",
-        severity: "medium",
-        explanation: "In Bangladesh, a substantial percentage of nutritional anemia resides in adult women. Your logged diet is low in high-absorption dietary iron compounds.",
-        actionableSteps: [
-          "Include seasonal green leafy vegetables (notably Kachu Shak, Lal Shak).",
-          "Include organ meats or dry fruits and pair them with vitamin-C sources (fresh lemon juice, amla/amalaki, or guava) to maximize iron bioavailability."
-        ]
-      });
-    }
-
-    // High Carbohydrate / Sugar alert (very common in Bangladeshi diet due to refined foods and high rice portion)
-    if (profile.healthConditions.includes('diabetes') || totalSugar > 30) {
-      alerts.push({
-        title: "Carbohydrate Loading / Glycemic Spikes alert",
-        severity: profile.healthConditions.includes('diabetes') ? 'high' : 'medium',
-        explanation: "Consuming heavy plates of high glycemic refined white rice (Bhaat) or deep-fried flour items like paratha causes dangerous postprandial blood glucose spikes.",
-        actionableSteps: [
-          "Swap standard white rice with Red Rice (Laal Bhaat) or brown-grain rice.",
-          "Restrict flour-based breakfast foods; practice strict portion management limits."
-        ]
-      });
-    }
-
-    // Hypertension danger
-    if (profile.healthConditions.includes('hypertension') || totalSodium > 1500) {
-      alerts.push({
-        title: "Sodium Overload / Hypertension Risk",
-        severity: profile.healthConditions.includes('hypertension') ? 'high' : 'medium',
-        explanation: "Typical Bangladeshi recipes utilize substantial amounts of salt (Kacha Lobon) at the dining table, plus industrial processed snacks. High sodium drives severe blood pressure risks.",
-        actionableSteps: [
-          "Completely exclude adding raw dining table salt (Kacha Lobon).",
-          "Lower use of commercial spice packets, pickles, and high-salt street foods."
-        ]
-      });
-    }
-
-    if (alerts.length === 0) {
-      // General wellness review
-      alerts.push({
-        title: "Sedentary Routine Adjustment",
-        severity: "low",
-        explanation: "If you have limited active movements, your caloric balance must correspond directly. Focus on maintaining lean muscle through lean proteins (lentils, fish) and physical exercise.",
-        actionableSteps: [
-          "Walk rapidly around the neighborhood or local park for 30 minutes daily.",
-          "Increase intake of high-fiber local vegetables."
-        ]
-      });
-    }
-
-    overallSummary += `Detected ${alerts.length} dietary risk alerts based on clinical criteria of lifestyle habits, medical triggers, and food intake trends in Bangladesh. Correct these with localized dietary shifts.`;
-
-    return res.json({
-      alerts,
-      overallSummary,
-      disclaimer: "DISCLAIMER: This system is powered by AI and exists solely for health awareness and educational purposes. It does NOT claim to provide medical diagnosis, nor should it substitute professional clinical evaluation."
-    });
+    return res.json(buildFallbackRiskAssessment(profile, foodLog || []));
   }
 
   try {
@@ -435,8 +550,8 @@ Perform a non-medical prevention and awareness risk assessment. Pay extreme atte
 3. Local micronutrient gaps like Iron deficiency (highly prevalent in Bangladeshi females) or Vitamin D/Calcium due to limited sunlight/insufficient dairy.
 Include a strict disclaimer indicating this is educational and not clinical diagnosis. Keep language constructive, authoritative, and encouraging.`;
 
-    const response = await aiClient.models.generateContent({
-      model: "gemini-3.5-flash",
+    const response = await generateGeminiContent({
+      model: GEMINI_MODEL,
       contents: prompt,
       config: {
         responseMimeType: "application/json",
@@ -483,7 +598,7 @@ app.post("/api/meal-recommendations", async (req, res) => {
     return res.status(400).json({ error: "Providing a Health Profile is required to generate meal recommendations." });
   }
 
-  if (!aiClient) {
+  if (!shouldUseGemini()) {
     // Generate lovely localized recommendations according to budget preference
     console.log("Serving local fallback meal plan...");
     const isBudget = profile.budgetPreference === 'budget';
@@ -584,8 +699,8 @@ Generate exactly 4 entries covering Breakfast, Lunch, afternoon Snack, and Dinne
 Recommendations MUST use common, local, easily accessible items in Bangladesh (like ruti, khichuri, ruit fish, shoila bhorta, lal shak, muri, tok doi, local banana, guava, green chili, turmeric). Mention both English and Bangla sounding names.
 Keep estimated cost realistic (express values in BDT - Bangladeshi Taka). Provide total protein, carbohydrates, calories, fat, and clear, simple preparation instructions.`;
 
-    const response = await aiClient.models.generateContent({
-      model: "gemini-3.5-flash",
+    const response = await generateGeminiContent({
+      model: GEMINI_MODEL,
       contents: prompt,
       config: {
         responseMimeType: "application/json",
@@ -643,7 +758,7 @@ Keep estimated cost realistic (express values in BDT - Bangladeshi Taka). Provid
 app.post("/api/healthy-alternatives", async (req, res) => {
   const { customQuery } = req.body;
 
-  if (!aiClient) {
+  if (!shouldUseGemini()) {
     // Return high quality local alternatives data
     console.log("Serving static pre-calculated alternatives...");
     if (customQuery && customQuery.trim().length > 0) {
@@ -664,8 +779,8 @@ app.post("/api/healthy-alternatives", async (req, res) => {
       ? `Give me healthy local alternatives to this user query: "${customQuery}" in Bangladesh.`
       : "Provide a comprehensive index of common unhealthy Bangladeshi street food snacks or daily starches (like Paratha, Singara, Puri, Sweet Rosgulla, Piyaju, sweetened road milk tea, refined white rice), alongside much healthier, budget-friendly and accessible local alternatives.";
 
-    const response = await aiClient.models.generateContent({
-      model: "gemini-3.5-flash",
+    const response = await generateGeminiContent({
+      model: GEMINI_MODEL,
       contents: prompt,
       config: {
         responseMimeType: "application/json",
