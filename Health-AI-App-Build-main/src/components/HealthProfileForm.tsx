@@ -1,6 +1,6 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { HealthProfile } from '../types';
-import { Activity, ShieldAlert, BadgeDollarSign, Swords, HeartPulse, User } from 'lucide-react';
+import { Activity, ShieldAlert, BadgeDollarSign, HeartPulse, User } from 'lucide-react';
 
 interface Props {
   profile: HealthProfile;
@@ -19,11 +19,44 @@ const COMMON_CONDITIONS = [
 ];
 
 export default function HealthProfileForm({ profile, onChange, isLoading, onGenerateRecommendations }: Props) {
+  const [draftNumbers, setDraftNumbers] = useState({
+    age: String(profile.age),
+    weight: String(profile.weight),
+    height: String(profile.height),
+  });
+
+  useEffect(() => {
+    setDraftNumbers({
+      age: String(profile.age),
+      weight: String(profile.weight),
+      height: String(profile.height),
+    });
+  }, [profile.age, profile.weight, profile.height]);
+
   const setField = (field: keyof HealthProfile, value: any) => {
     onChange({
       ...profile,
       [field]: value,
     });
+  };
+
+  const setNumberDraft = (field: 'age' | 'weight' | 'height', value: string) => {
+    if (!/^\d*\.?\d*$/.test(value)) return;
+    setDraftNumbers(prev => ({ ...prev, [field]: value }));
+    if (value === "" || value === ".") return;
+
+    const parsed = field === 'age' ? parseInt(value, 10) : parseFloat(value);
+    if (!Number.isNaN(parsed)) {
+      setField(field, parsed);
+    }
+  };
+
+  const clampNumberDraft = (field: 'age' | 'weight' | 'height', min: number, max: number, fallback: number) => {
+    const raw = draftNumbers[field];
+    const parsed = field === 'age' ? parseInt(raw, 10) : parseFloat(raw);
+    const next = Number.isNaN(parsed) ? fallback : Math.min(max, Math.max(min, parsed));
+    setDraftNumbers(prev => ({ ...prev, [field]: String(next) }));
+    setField(field, next);
   };
 
   const toggleCondition = (conditionId: string) => {
@@ -64,8 +97,9 @@ export default function HealthProfileForm({ profile, onChange, isLoading, onGene
             type="number"
             min="12"
             max="110"
-            value={profile.age}
-            onChange={(e) => setField('age', Math.max(12, parseInt(e.target.value) || 25))}
+            value={draftNumbers.age}
+            onChange={(e) => setNumberDraft('age', e.target.value)}
+            onBlur={() => clampNumberDraft('age', 12, 110, profile.age || 25)}
             className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
           />
         </div>
@@ -97,8 +131,9 @@ export default function HealthProfileForm({ profile, onChange, isLoading, onGene
             type="number"
             min="30"
             max="200"
-            value={profile.weight}
-            onChange={(e) => setField('weight', Math.max(30, parseFloat(e.target.value) || 65))}
+            value={draftNumbers.weight}
+            onChange={(e) => setNumberDraft('weight', e.target.value)}
+            onBlur={() => clampNumberDraft('weight', 30, 200, profile.weight || 65)}
             className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
           />
         </div>
@@ -109,8 +144,9 @@ export default function HealthProfileForm({ profile, onChange, isLoading, onGene
             type="number"
             min="100"
             max="250"
-            value={profile.height}
-            onChange={(e) => setField('height', Math.max(100, parseFloat(e.target.value) || 165))}
+            value={draftNumbers.height}
+            onChange={(e) => setNumberDraft('height', e.target.value)}
+            onBlur={() => clampNumberDraft('height', 100, 250, profile.height || 165)}
             className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
           />
         </div>
