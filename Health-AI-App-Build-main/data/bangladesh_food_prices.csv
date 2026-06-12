@@ -1,0 +1,28 @@
+item_key,name,bangla_name,category,tier,unit,unit_price_bdt,calories,protein,carbs,fat
+atta_ruti,Atta ruti,আটার রুটি,carb,budget,piece,8,110,3.5,22,0.5
+white_rice,Measured white rice,সাদা ভাত,carb,budget,plate,14,260,5,58,0.4
+red_rice,Red rice,লাল চালের ভাত,carb,moderate,plate,24,230,6,48,1.2
+oats,Oats,ওটস,carb,premium,serving,35,150,5,27,3
+moshur_dal,Moshur dal,মসুর ডাল,protein,budget,cup,18,140,9,19,2
+chhola,Boiled chhola,সেদ্ধ ছোলা,protein,budget,cup,22,180,9,30,3
+egg,Farm egg,ডিম,protein,budget,piece,15,75,6,1,5
+rui_fish,Rui fish,রুই মাছ,protein,moderate,piece,60,155,17,2,8
+katla_fish,Katla fish,কাতলা মাছ,protein,moderate,piece,70,170,18,2,9
+chicken,Chicken curry portion,মুরগি,protein,moderate,piece,75,190,24,2,9
+beef_lean,Lean beef portion,কম চর্বির গরুর মাংস,protein,premium,portion,130,260,28,3,16
+tok_doi,Plain tok doi,টক দই,protein,premium,cup,45,120,8,12,4
+lal_shak,Lal shak,লাল শাক,vegetable,budget,serving,12,35,2,6,0
+kolmi_shak,Kolmi shak,কলমি শাক,vegetable,budget,serving,10,30,2,5,0
+mixed_veg,Seasonal mixed vegetables,মৌসুমি সবজি,vegetable,budget,serving,18,60,2,12,1
+salad,Cucumber tomato lemon salad,শসা টমেটো লেবু সালাদ,vegetable,budget,serving,20,35,1,8,0
+lau_shobji,Lau vegetable curry,লাউ সবজি,vegetable,budget,serving,18,55,2,10,1
+broccoli,Premium green vegetables,প্রিমিয়াম সবুজ সবজি,vegetable,premium,serving,65,55,4,10,1
+guava,Guava,পেয়ারা,fruit,budget,piece,18,60,1,14,0
+banana,Local banana,কলা,fruit,budget,piece,12,90,1,23,0
+amra,Amra,আমড়া,fruit,moderate,piece,18,45,1,10,0
+apple,Apple,আপেল,fruit,premium,piece,45,95,0,25,0
+muri,Muri,মুড়ি,snack,budget,bowl,8,80,2,17,0
+peanut,Roasted peanuts,বাদাম,snack,budget,small_handful,12,90,4,3,7
+chia,Chia seeds,চিয়া সিড,snack,premium,tbsp,30,60,2,5,4
+mustard_oil,Mustard oil,সরিষার তেল,oil,budget,tsp,3,40,0,0,4.5
+rice_bran_oil,Rice bran oil,রাইস ব্র্যান তেল,oil,moderate,tsp,5,40,0,0,4.5

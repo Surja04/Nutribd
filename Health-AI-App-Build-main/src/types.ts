@@ -73,3 +73,26 @@ export interface FoodAlternative {
     healthyBenefits?: string;
   };
 }
+
+export interface TrainingPlanDay {
+  dayLabel: string;
+  focus: string;
+  durationMinutes: number;
+  warmup: string[];
+  exercises: {
+    name: string;
+    sets: string;
+    repsOrTime: string;
+    rest: string;
+    notes: string;
+  }[];
+  cooldown: string[];
+}
+
+export interface TrainingPlanResponse {
+  goalSummary: string;
+  safetyNotes: string[];
+  weeklyPlan: TrainingPlanDay[];
+  progressionAdvice: string;
+  recoveryAdvice: string;
+}

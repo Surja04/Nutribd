@@ -3,6 +3,8 @@ flask-cors
 pandas
 fuzzywuzzy
 python-Levenshtein
+rapidfuzz
+jellyfish
 streamlit
 chromadb
 sentence-transformers

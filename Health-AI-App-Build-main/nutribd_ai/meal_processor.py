@@ -42,6 +42,11 @@ def _clean_food_text(raw_input: str) -> str:
     cleaned_item = raw_input.lower()
     cleaned_item = re.sub(r"\d+(\.\d+)?", "", cleaned_item)
     cleaned_item = re.sub(r"\b(plate|bowl|cup|piece|pieces|glass|slice|half|full|gm|g|grams|ta|টা)\b", "", cleaned_item)
+    cleaned_item = re.sub(
+        r"\b(for|with|and|breakfast|lunch|dinner|snack|morning|afternoon|night|today|ate|had|khailam|kheyechi)\b",
+        " ",
+        cleaned_item,
+    )
     cleaned_item = re.sub(r"\s+", " ", cleaned_item).strip()
     return cleaned_item
 
